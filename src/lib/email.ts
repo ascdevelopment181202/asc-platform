@@ -51,7 +51,7 @@ export function textToHtml(text: string) {
 
 // ---------- Client-facing templates (copy from the Onboarding SOP doc) ----------
 
-const signoff = () => `Any questions, call or text me on ${env.contactPhone}.\n\nAyush\nASC Development`;
+export const signoff = () => `Any questions, call or text me on ${env.contactPhone}.\n\nAyush\nASC Development`;
 
 export function welcomeEmail(p: { firstName: string; formLink: string }) {
   return {

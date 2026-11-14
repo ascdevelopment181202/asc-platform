@@ -72,3 +72,22 @@ export async function writeSeoPagesAction(formData: FormData) {
   }
   revalidatePath(`/admin/clients/${clientId}`);
 }
+
+export async function saveReportNote(formData: FormData) {
+  const clientId = String(formData.get("clientId"));
+  const note = String(formData.get("note") ?? "").trim();
+  await db().from("clients").update({ report_note: note || null }).eq("id", clientId);
+  revalidatePath(`/admin/clients/${clientId}`);
+}
+
+/** Sends a report for the last 30 days now, on top of the automatic monthly one. */
+export async function sendReportNow(formData: FormData) {
+  const { sendReport, lastThirtyDays } = await import("@/lib/reports");
+  const { claimOnce } = await import("@/lib/clients");
+  const client = await getClient(String(formData.get("clientId")));
+  const { data: site } = await db().from("sites").select("*").eq("client_id", client.id).single<import("@/lib/sites").Site>();
+  if (!site) throw new Error("No website yet.");
+  await sendReport(client, site, lastThirtyDays());
+  await claimOnce(client.id, `report_manual_${Date.now()}`);
+  revalidatePath(`/admin/clients/${client.id}`);
+}

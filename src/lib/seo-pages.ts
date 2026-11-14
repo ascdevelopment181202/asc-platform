@@ -91,7 +91,6 @@ export function servicePage(c: SiteContent, slug: string): SeoPage | null {
 export function areaPage(c: SiteContent, slug: string): SeoPage | null {
   const area = c.areas.find((a) => areaSlug(a) === slug);
   if (!area) return null;
-  const noun = cap(c.tradeNoun);
   const inCombo = comboAreas(c).includes(area);
   const near = nearby(c, area);
   const intro = pick(

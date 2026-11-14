@@ -102,11 +102,18 @@ ${opts.jsonld.map((j) => `<script type="application/ld+json">${json(j)}</script>
 <noscript><h1>${esc(opts.h1)}</h1><p>${esc(opts.lead)}</p><p>Call <a href="${esc(c.phoneHref)}">${esc(c.phone)}</a></p></noscript>
 <script>window.SITE=${json(opts.kit)};</script>
 <script src="/kit/kit.js"></script>
+${ctx.preview ? "" : trackScript(ctx.site.id, opts.path)}
 </body>
 </html>`;
   return new Response(html, {
     headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, s-maxage=60, stale-while-revalidate=300" },
   });
+}
+
+/** Counts the visit and taps on the phone number. Skipped on drafts. */
+function trackScript(siteId: string, path: string) {
+  const d = json({ s: siteId, p: path });
+  return `<script>(function(){if(navigator.webdriver)return;var d=${d};function t(k){try{var b=JSON.stringify({s:d.s,p:d.p,k:k,r:document.referrer});navigator.sendBeacon?navigator.sendBeacon("/api/track",b):fetch("/api/track",{method:"POST",body:b,keepalive:true})}catch(e){}}t("view");document.addEventListener("click",function(e){var a=e.target.closest&&e.target.closest('a[href^="tel:"]');if(a)t("call")},true)})();</script>`;
 }
 
 export const notFound = () => new Response("Not found", { status: 404, headers: { "content-type": "text/plain" } });

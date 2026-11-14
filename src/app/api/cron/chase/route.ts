@@ -3,6 +3,8 @@ import { db, type Client } from "@/lib/supabase";
 import { clientLabel, createTask, once } from "@/lib/clients";
 import { chase24Email, chase48Email, notifyAdmin, sendEmail } from "@/lib/email";
 import { firstNameOf, formLink } from "@/lib/onboarding";
+import { REPORT_DAYS, reportPeriod, sendReport } from "@/lib/reports";
+import type { Site } from "@/lib/sites";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -77,7 +79,7 @@ export async function GET(request: Request) {
     }
   }
 
-  // 3. Day-30 report and referral ask for live clients.
+  // 3. Monthly report for live clients, every 30 days after launch.
   const { data: live } = await db()
     .from("clients")
     .select("*")
@@ -86,10 +88,12 @@ export async function GET(request: Request) {
     .returns<Client[]>();
 
   for (const c of live ?? []) {
-    const days = (now - Date.parse(c.launched_at!)) / (24 * HOUR);
-    if (days >= 30) {
-      await run(c, "day30_report", () => createTask(c.id, `Send day-30 report and referral ask to ${clientLabel(c)}`, new Date()));
-    }
+    const n = Math.floor((now - Date.parse(c.launched_at!)) / (REPORT_DAYS * 24 * HOUR));
+    if (n < 1) continue;
+    const { data: site } = await db().from("sites").select("*").eq("client_id", c.id).maybeSingle<Site>();
+    if (!site?.published) continue;
+    // Only the latest period, so a client never gets a backlog of old reports.
+    await run(c, `report_${n}`, () => sendReport(c, site, reportPeriod(c.launched_at!, n), { first: n === 1 }));
   }
 
   if (failures.length) console.error("Chase cron failures", failures);

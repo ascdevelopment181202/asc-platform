@@ -6,7 +6,8 @@ import { clientLabel } from "@/lib/clients";
 import { formLink } from "@/lib/onboarding";
 import { FIELD_LABELS } from "@/lib/onboarding-fields";
 import { completeTask, markLive, resendWelcome, saveNotes } from "../../actions";
-import { generateSiteAction, saveDomain, setPublished, writeSeoPagesAction } from "../../site-actions";
+import { generateSiteAction, saveDomain, saveReportNote, sendReportNow, setPublished, writeSeoPagesAction } from "../../site-actions";
+import { lastThirtyDays, REPORT_DAYS, reportStats } from "@/lib/reports";
 import { allPaths } from "@/lib/seo-pages";
 import { seoAiEnabled } from "@/lib/seo-ai";
 import type { Site } from "@/lib/sites";
@@ -52,6 +53,13 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
   const { count: seoWritten } = site
     ? await supabase.from("seo_pages").select("id", { count: "exact", head: true }).eq("site_id", site.id)
     : { count: 0 };
+
+  const stats = site ? await reportStats(site, lastThirtyDays()) : null;
+  const period = REPORT_DAYS * 86400_000;
+  const nextReport =
+    c.launched_at && stats
+      ? new Date(Date.parse(c.launched_at) + (Math.floor((stats.period.to.getTime() - Date.parse(c.launched_at)) / period) + 1) * period)
+      : null;
 
   const paths = sub ? [sub.logo_path, ...sub.photo_paths].filter((p): p is string => !!p) : [];
   const { data: signed } = paths.length
@@ -201,6 +209,32 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
             )}
           </Card>
 
+          {site && stats && (
+            <Card title="Monthly report">
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <Stat label="Enquiries" value={stats.enquiries} />
+                <Stat label="Phone taps" value={stats.calls} />
+                <Stat label="Visits" value={stats.visits} />
+              </div>
+              <p className="mt-2 text-xs text-neutral-500">Last 30 days. {site.published ? "" : "Visits are only counted once the site is published. "}
+                {nextReport ? `Next report sends automatically on ${fmt(nextReport.toISOString())}.` : "Reports start 30 days after you mark the client live."}
+              </p>
+              <form action={saveReportNote} className="mt-3 space-y-2">
+                <input type="hidden" name="clientId" value={c.id} />
+                <label className="block text-xs font-medium text-neutral-600">What we did this month (one per line, goes in the next report)</label>
+                <textarea name="note" rows={3} defaultValue={c.report_note ?? ""} placeholder={"Added 3 new photos to the gallery\nPosted twice on your Google profile"} className={`${input} w-full`} />
+                <button className={`${btnQuiet} w-full`}>Save note</button>
+              </form>
+              <div className="mt-2 flex gap-2">
+                <a href={`/admin/clients/${c.id}/report`} target="_blank" rel="noreferrer" className={`${btnQuiet} flex-1 text-center`}>Preview</a>
+                <form action={sendReportNow} className="flex-1">
+                  <input type="hidden" name="clientId" value={c.id} />
+                  <button className={`${btnQuiet} w-full`}>Send now</button>
+                </form>
+              </div>
+            </Card>
+          )}
+
           <Card title="Go live">
             <form action={markLive} className="space-y-3 text-sm">
               <input type="hidden" name="clientId" value={c.id} />
@@ -227,7 +261,7 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
             <ul className="space-y-2 text-sm">
               {(messages ?? []).map((m) => (
                 <li key={m.id} className="flex justify-between gap-3">
-                  <span>{MESSAGE_LABELS[m.kind] ?? (m.kind.startsWith("welcome_resent") ? "Welcome email resent" : m.kind)}</span>
+                  <span>{(MESSAGE_LABELS[m.kind] ?? (m.kind.startsWith("report_manual") ? "Report sent manually" : m.kind.startsWith("report_") ? `Monthly report ${m.kind.slice(7)} sent` : undefined)) ?? (m.kind.startsWith("welcome_resent") ? "Welcome email resent" : m.kind)}</span>
                   <span className="shrink-0 text-neutral-500">{fmt(m.created_at)}</span>
                 </li>
               ))}
@@ -243,6 +277,15 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
           </Card>
         </div>
       </section>
+    </div>
+  );
+}
+
+function Stat({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-lg bg-neutral-50 p-2">
+      <p className="text-xl font-semibold">{value}</p>
+      <p className="text-xs text-neutral-500">{label}</p>
     </div>
   );
 }
