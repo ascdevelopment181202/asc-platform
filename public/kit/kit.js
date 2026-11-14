@@ -12,7 +12,7 @@ if(S.concept)h+='<div class="concept">Preview of the new website for <strong>'+e
 h+='<header class="nav"><div class="wrap"><a class="brand" href="#top"><b>'+e(S.brand)+'</b><span>'+e(S.tagline)+'</span></a><ul><li><a href="#services">Services</a></li>'+((W.gallery&&W.gallery.length)||hasPairs?'<li><a href="#work">Our work</a></li>':'')+'<li><a href="#how">How it works</a></li>'+(S.reviews?'<li><a href="#reviews">Reviews</a></li>':'')+'<li><a href="#areas">Areas</a></li></ul><a class="phone" href="tel:'+tel+'">'+phoneSvg+e(S.phone)+'</a></div></header>';
 h+='<main id="top"><section class="hero" aria-label="Introduction"><div class="mosaic" aria-hidden="true">';
 var M=S.mosaic||[],n=M.length,cols=n?[[],[],[]]:[];
-for(var i=0;i<12;i++){cols[i%3].push(i)}
+if(n)for(var i=0;i<12;i++){cols[i%3].push(i)}
 cols.forEach(function(c,ci){var t='';c.forEach(function(i,ti){var a=M[(i*2+ci)%n],b=M[(i*2+ci+5)%n];t+='<div class="tile" style="--d:'+((ci*2.3+ti*3.1)%12).toFixed(1)+'s"><img src="'+a+'" alt="" decoding="async"><img src="'+b+'" alt="" loading="lazy" decoding="async"></div>'});h+='<div class="col">'+t+t+'</div>'});
 h+='</div><div class="wrap"><h1>'+e(S.hero.h1)+'</h1><p>'+e(S.hero.p)+'</p><div class="actions"><a class="btn btn-sun" href="#quote">'+e(S.hero.cta||'Get a free quote')+'</a><a class="btn btn-line" href="tel:'+tel+'">Call '+e(S.phone)+'</a></div></div></section>';
 if(S.proof&&S.proof.length){h+='<div class="proof"><div class="wrap">';
