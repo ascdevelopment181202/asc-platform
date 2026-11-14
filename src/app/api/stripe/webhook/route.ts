@@ -48,7 +48,7 @@ async function handle(event: Stripe.Event) {
         email,
         fullName: session.customer_details?.name ?? null,
         phone: session.customer_details?.phone ?? null,
-        businessName: businessField?.text?.value ?? null,
+        businessName: session.customer_details?.business_name ?? businessField?.text?.value ?? null,
         stripeCustomerId: idOf(session.customer),
         stripeSubscriptionId: idOf(session.subscription),
       });
