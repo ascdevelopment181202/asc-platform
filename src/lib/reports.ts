@@ -40,7 +40,8 @@ export function reportPeriod(launchedAt: string, n: number): Period {
 }
 
 /** The 30 days up to now, for previews and manual sends. */
-export const lastDays = (n: number): Period => ({ from: new Date(Date.now() - n * DAY), to: new Date() });
+/** The last n days, today included (the end is exclusive, so it sits a day ahead). */
+export const lastDays = (n: number): Period => ({ from: new Date(Date.now() - (n - 1) * DAY), to: new Date(Date.now() + DAY) });
 export const lastThirtyDays = (): Period => lastDays(REPORT_DAYS);
 
 function pageLabel(site: Site, path: string) {

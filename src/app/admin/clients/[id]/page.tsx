@@ -71,7 +71,7 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
   const period = REPORT_DAYS * 86400_000;
   const nextReport =
     c.launched_at && stats
-      ? new Date(Date.parse(c.launched_at) + (Math.floor((stats.period.to.getTime() - Date.parse(c.launched_at)) / period) + 1) * period)
+      ? new Date(Date.parse(c.launched_at) + (Math.floor((stats.period.to.getTime() - 86400_000 - Date.parse(c.launched_at)) / period) + 1) * period)
       : null;
 
   const paths = sub ? [sub.logo_path, ...sub.photo_paths].filter((p): p is string => !!p) : [];
