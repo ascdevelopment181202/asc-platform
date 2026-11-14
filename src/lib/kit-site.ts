@@ -1,6 +1,6 @@
 // Maps generated SiteContent onto the asc-site-kit data format (window.SITE),
 // so client homepages use the same design as the Which? outreach mockups.
-import type { SiteContent } from "./site-content";
+import { slugify, type SiteContent } from "./site-content";
 
 function hexToRgb(hex: string) {
   const h = hex.replace("#", "");
@@ -113,7 +113,7 @@ export function toKitSite(c: SiteContent, opts: { siteId: string; base: string; 
     areas: {
       title: "Areas we cover",
       intro: `Based in ${c.mainArea} and covering the surrounding area.`,
-      towns: c.areas,
+      towns: c.areas.map((a) => [a, `${opts.base}/areas/${slugify(a)}`]),
       q: `${c.mainArea}, UK`,
     },
     quote: {

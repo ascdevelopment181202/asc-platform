@@ -16,7 +16,8 @@ export function proxy(request: NextRequest) {
       return new NextResponse("Not found", { status: 404 });
     }
     const url = request.nextUrl.clone();
-    url.pathname = `/s/${host.replace(/^www\./, "")}${pathname === "/" ? "" : pathname}`;
+    const path = pathname === "/sitemap.xml" ? "/sitemap" : pathname === "/robots.txt" ? "/robots" : pathname;
+    url.pathname = `/s/${host.replace(/^www\./, "")}${path === "/" ? "" : path}`;
     return NextResponse.rewrite(url);
   }
 
@@ -47,5 +48,6 @@ function timingSafeEqual(a: string, b: string) {
   return diff === 0;
 }
 
-// Everything except Next internals, API routes and static files.
-export const config = { matcher: ["/((?!_next/|api/|favicon.ico|robots.txt|sitemap.xml|.*\\.[a-z0-9]+$).*)"] };
+// Everything except Next internals, API routes, the shared kit assets and static files.
+// robots.txt and sitemap.xml do go through, so each client domain gets its own.
+export const config = { matcher: ["/((?!_next/|api/|kit/|favicon.ico|.*\\.(?:png|jpe?g|gif|svg|webp|ico|css|js|woff2?)$).*)"] };

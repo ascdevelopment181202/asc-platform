@@ -6,12 +6,15 @@ import { clientLabel } from "@/lib/clients";
 import { formLink } from "@/lib/onboarding";
 import { FIELD_LABELS } from "@/lib/onboarding-fields";
 import { completeTask, markLive, resendWelcome, saveNotes } from "../../actions";
-import { generateSiteAction, saveDomain, setPublished } from "../../site-actions";
+import { generateSiteAction, saveDomain, setPublished, writeSeoPagesAction } from "../../site-actions";
+import { allPaths } from "@/lib/seo-pages";
+import { seoAiEnabled } from "@/lib/seo-ai";
 import type { Site } from "@/lib/sites";
 import { env } from "@/lib/env";
 import { btn, btnQuiet, Countdown, fmt, input, StatusPill } from "../../ui";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 300;
 
 type Submission = { id: string; created_at: string; data: Record<string, unknown>; logo_path: string | null; photo_paths: string[] };
 type Message = { id: string; kind: string; created_at: string };
@@ -45,6 +48,10 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
     supabase.from("enquiries").select("id, created_at, name, phone, email, service, message").eq("client_id", id).order("created_at", { ascending: false }).limit(50).returns<Enquiry[]>(),
   ]);
   const previewUrl = site ? `${env.appUrl}/s/${site.slug}` : null;
+  const seoTotal = site ? allPaths(site.content).length - 1 : 0;
+  const { count: seoWritten } = site
+    ? await supabase.from("seo_pages").select("id", { count: "exact", head: true }).eq("site_id", site.id)
+    : { count: 0 };
 
   const paths = sub ? [sub.logo_path, ...sub.photo_paths].filter((p): p is string => !!p) : [];
   const { data: signed } = paths.length
@@ -166,6 +173,20 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
                     <input type="hidden" name="published" value={site.published ? "false" : "true"} />
                     <button className={`${site.published ? btnQuiet : btn} w-full`}>{site.published ? "Unpublish" : "Publish"}</button>
                   </form>
+                </div>
+                <div className="rounded-lg bg-neutral-50 p-3">
+                  <p className="font-medium">SEO pages: {seoWritten ?? 0} of {seoTotal} written</p>
+                  <p className="mt-1 text-xs text-neutral-500">Each service, area and service-in-area page gets its own copy written by Claude. Takes 1 to 2 minutes.</p>
+                  {seoAiEnabled() ? (
+                    <form action={writeSeoPagesAction} className="mt-2">
+                      <input type="hidden" name="clientId" value={c.id} />
+                      <input type="hidden" name="onlyMissing" value={(seoWritten ?? 0) > 0 ? "true" : "false"} />
+                      <button className={`${btnQuiet} w-full`}>{(seoWritten ?? 0) === 0 ? "Write SEO pages" : (seoWritten ?? 0) < seoTotal ? "Write missing pages" : "All written"}</button>
+                    </form>
+                  ) : (
+                    <p className="mt-2 text-xs text-amber-700">Add ANTHROPIC_API_KEY in Vercel to enable this.</p>
+                  )}
+                  {site.published && <a href={site.domain ? `https://${site.domain}/sitemap.xml` : `${previewUrl}/sitemap`} target="_blank" rel="noreferrer" className="mt-2 block text-xs text-blue-700 underline">Sitemap</a>}
                 </div>
                 <form action={saveDomain} className="space-y-2">
                   <input type="hidden" name="clientId" value={c.id} />
