@@ -5,6 +5,7 @@ export type SiteService = { name: string; slug: string; summary: string; body: s
 
 export type SiteContent = {
   businessName: string;
+  ownerName: string;
   trade: string;
   tradeNoun: string; // "plumber", "electrician"...
   phone: string;
@@ -248,6 +249,7 @@ export function buildSiteContent(
 
   return {
     businessName,
+    ownerName: str(answers.contactName),
     trade,
     tradeNoun: noun,
     phone,
