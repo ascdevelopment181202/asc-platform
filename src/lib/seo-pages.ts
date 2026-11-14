@@ -74,9 +74,9 @@ export function servicePage(c: SiteContent, slug: string): SeoPage | null {
   const inCombo = comboServices(c).some((x) => x.slug === s.slug);
   return {
     path: `/services/${s.slug}`,
-    title: titleFor(`${s.name} in ${c.mainArea}`, c.businessName),
+    title: titleFor(`${s.name} | ${listJoin(c.areas.slice(0, 2))}`, c.businessName),
     description: descFor(c, `${s.summary} Covering ${listJoin(c.areas.slice(0, 3))}.`),
-    h1: `${s.name} in ${c.mainArea}`,
+    h1: `${s.name} across ${c.mainArea} and nearby`,
     heroP: s.summary,
     proseTitle: `${s.name} you can trust`,
     paras: [...s.body, c.different, trustLine(c)].filter(Boolean),
@@ -104,11 +104,11 @@ export function areaPage(c: SiteContent, slug: string): SeoPage | null {
   );
   return {
     path: `/areas/${slug}`,
-    title: titleFor(`${noun} in ${area}`, c.businessName),
+    title: titleFor(`Local ${c.tradeNoun} covering ${area}`, c.businessName),
     description: descFor(c, `Trusted ${c.tradeNoun} in ${area}. ${c.services.slice(0, 3).map((s) => s.name).join(", ")}.${c.emergency ? " Emergency call-outs." : ""}`),
-    h1: `${noun} in ${area}`,
+    h1: `Your local ${c.tradeNoun} in ${area}`,
     heroP: `${c.emergency ? "Fast response, including emergencies, " : "Reliable, tidy work "}across ${area} and the surrounding area.`,
-    proseTitle: `Your local ${c.tradeNoun} in ${area}`,
+    proseTitle: `Why homeowners in ${area} call us`,
     paras: [
       intro,
       `Our services in ${area} include ${listJoin(c.services.slice(0, 5).map((s) => lc(s.name)))}.`,

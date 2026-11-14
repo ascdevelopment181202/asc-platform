@@ -55,14 +55,15 @@ export async function writeSeoPagesAction(formData: FormData) {
     const have = new Set((done ?? []).map((d) => d.path));
     todo = pages.filter((p) => !have.has(p.path));
   }
-  const siblings = pages.map((p) => p.h1);
+  const siblings = [c.seo.title, ...pages.map((p) => p.title)];
 
   // A few at a time keeps within the API rate limits and the function time limit.
   for (let i = 0; i < todo.length; i += 6) {
     await Promise.all(
       todo.slice(i, i + 6).map(async (page) => {
-        const copy = await writeSeoCopy(c, page, siblings.filter((s) => s !== page.h1));
+        const copy = await writeSeoCopy(c, page, siblings.filter((s) => s !== page.title));
         if (!copy) return;
+        if (siblings.some((t) => t.toLowerCase() === copy.title.toLowerCase() && t !== page.title)) copy.title = page.title;
         await db()
           .from("seo_pages")
           .upsert({ site_id: site.id, path: page.path, content: copy, generated_at: new Date().toISOString() }, { onConflict: "site_id,path" });
