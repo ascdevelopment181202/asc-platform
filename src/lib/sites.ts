@@ -12,6 +12,9 @@ export type Site = {
   domain: string | null;
   content: SiteContent;
   published: boolean;
+  gsc_property: string | null;
+  gbp_location: string | null;
+  gbp_title: string | null;
   created_at: string;
   updated_at: string;
 };

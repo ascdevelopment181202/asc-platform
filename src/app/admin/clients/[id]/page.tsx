@@ -6,8 +6,10 @@ import { clientLabel } from "@/lib/clients";
 import { formLink } from "@/lib/onboarding";
 import { FIELD_LABELS } from "@/lib/onboarding-fields";
 import { completeTask, markLive, resendWelcome, saveNotes } from "../../actions";
-import { generateSiteAction, saveDomain, saveReportNote, sendReportNow, setPublished, writeSeoPagesAction } from "../../site-actions";
-import { lastThirtyDays, REPORT_DAYS, reportStats } from "@/lib/reports";
+import { generateSiteAction, saveDomain, saveGoogleSettings, saveReportNote, sendReportNow, setPublished, writeSeoPagesAction } from "../../site-actions";
+import { dashboardUrl, lastThirtyDays, rankLine, REPORT_DAYS, reportStats } from "@/lib/reports";
+import { googleAccount, listBusinessLocations, listSearchConsoleSites, type GbpLocation } from "@/lib/google";
+import { googleEnabled } from "@/lib/env";
 import { allPaths } from "@/lib/seo-pages";
 import { seoAiEnabled } from "@/lib/seo-ai";
 import type { Site } from "@/lib/sites";
@@ -55,6 +57,17 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
     : { count: 0 };
 
   const stats = site ? await reportStats(site, lastThirtyDays()) : null;
+  const gConnected = googleEnabled() && !!(await googleAccount());
+  let gscSites: string[] | null = null;
+  let gbpLocations: GbpLocation[] | null = null;
+  let gError = "";
+  if (site && gConnected) {
+    const [a, b] = await Promise.allSettled([listSearchConsoleSites(), listBusinessLocations()]);
+    if (a.status === "fulfilled") gscSites = a.value;
+    else gError += `Search Console: ${a.reason instanceof Error ? a.reason.message : a.reason}. `;
+    if (b.status === "fulfilled") gbpLocations = b.value;
+    else gError += `Business Profile: ${b.reason instanceof Error ? b.reason.message : b.reason}.`;
+  }
   const period = REPORT_DAYS * 86400_000;
   const nextReport =
     c.launched_at && stats
@@ -216,6 +229,21 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
                 <Stat label="Phone taps" value={stats.calls} />
                 <Stat label="Visits" value={stats.visits} />
               </div>
+              {stats.insights.gbp && (
+                <div className="mt-2 grid grid-cols-3 gap-2 text-center">
+                  <Stat label="Google calls" value={stats.insights.gbp.calls} />
+                  <Stat label="Directions" value={stats.insights.gbp.directions} />
+                  <Stat label="Profile views" value={stats.insights.gbp.views} />
+                </div>
+              )}
+              {stats.insights.search && stats.insights.search.rankings.length > 0 && (
+                <ul className="mt-2 space-y-1 text-xs">
+                  {stats.insights.search.rankings.slice(0, 5).map((r) => (
+                    <li key={r.query} className="flex justify-between gap-2"><span className="truncate">{r.query}</span><span className="shrink-0 font-medium">{rankLine(r)}</span></li>
+                  ))}
+                </ul>
+              )}
+              <a href={dashboardUrl(c)} target="_blank" rel="noreferrer" className="mt-2 block text-xs text-blue-700 underline">Client&apos;s live dashboard</a>
               <p className="mt-2 text-xs text-neutral-500">Last 30 days. {site.published ? "" : "Visits are only counted once the site is published. "}
                 {nextReport ? `Next report sends automatically on ${fmt(nextReport.toISOString())}.` : "Reports start 30 days after you mark the client live."}
               </p>
@@ -232,6 +260,50 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
                   <button className={`${btnQuiet} w-full`}>Send now</button>
                 </form>
               </div>
+            </Card>
+          )}
+
+          {site && (
+            <Card title="Google">
+              {!gConnected ? (
+                <p className="text-sm text-neutral-500">Connect Google on the admin home page first. Then pick this client&apos;s Search Console site and Business Profile here.</p>
+              ) : (
+                <form action={saveGoogleSettings} className="space-y-3">
+                  <input type="hidden" name="clientId" value={c.id} />
+                  <label className="block text-xs font-medium text-neutral-600">
+                    Search Console property
+                    {gscSites ? (
+                      <select name="gsc" defaultValue={site.gsc_property ?? ""} className={`${input} mt-1 w-full`}>
+                        <option value="">Not linked</option>
+                        {[...new Set([...(site.gsc_property ? [site.gsc_property] : []), ...gscSites])].map((p) => (
+                          <option key={p} value={p}>{p}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input name="gsc" defaultValue={site.gsc_property ?? (site.domain ? `sc-domain:${site.domain}` : "")} placeholder="sc-domain:example.co.uk" className={`${input} mt-1 w-full`} />
+                    )}
+                  </label>
+                  <label className="block text-xs font-medium text-neutral-600">
+                    Business Profile
+                    {gbpLocations ? (
+                      <select name="gbp" defaultValue={site.gbp_location ? `${site.gbp_location}|${site.gbp_title ?? ""}` : ""} className={`${input} mt-1 w-full`}>
+                        <option value="">Not linked</option>
+                        {site.gbp_location && !gbpLocations.some((l) => l.name === site.gbp_location) && (
+                          <option value={`${site.gbp_location}|${site.gbp_title ?? ""}`}>{site.gbp_title ?? site.gbp_location}</option>
+                        )}
+                        {gbpLocations.map((l) => (
+                          <option key={l.name} value={`${l.name}|${l.title}`}>{l.title} ({l.address})</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input name="gbp" defaultValue={site.gbp_location ? `${site.gbp_location}|${site.gbp_title ?? ""}` : ""} placeholder="locations/1234567890" className={`${input} mt-1 w-full`} />
+                    )}
+                  </label>
+                  {gError && <p className="text-xs text-amber-700">{gError}</p>}
+                  <button className={`${btnQuiet} w-full`}>Save</button>
+                </form>
+              )}
+              {stats?.insights.errors.length ? <p className="mt-2 text-xs text-red-700">{stats.insights.errors.join(" ")}</p> : null}
             </Card>
           )}
 

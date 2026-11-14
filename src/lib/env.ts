@@ -35,9 +35,17 @@ export const env = {
   get cronSecret() {
     return required("CRON_SECRET");
   },
+  get googleClientId() {
+    return required("GOOGLE_CLIENT_ID");
+  },
+  get googleClientSecret() {
+    return required("GOOGLE_CLIENT_SECRET");
+  },
   get contactPhone() {
     return process.env.CONTACT_PHONE ?? "07784 071383";
   },
 };
 
 export const ASSETS_BUCKET = "client-assets";
+
+export const googleEnabled = () => !!process.env.GOOGLE_CLIENT_ID && !!process.env.GOOGLE_CLIENT_SECRET;

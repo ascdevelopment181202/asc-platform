@@ -3,12 +3,16 @@ import { db, type Client, type Task } from "@/lib/supabase";
 import { clientLabel } from "@/lib/clients";
 import { addClientManually, addTask, completeTask } from "./actions";
 import { btn, btnQuiet, Countdown, fmt, input, StatusPill } from "./ui";
+import { googleAccount } from "@/lib/google";
+import { googleEnabled } from "@/lib/env";
 
 export const dynamic = "force-dynamic";
 
 const ORDER = ["building", "awaiting_form", "past_due", "live", "cancelled"];
 
-export default async function AdminHome() {
+export default async function AdminHome({ searchParams }: { searchParams: Promise<{ google?: string }> }) {
+  const { google: googleMsg } = await searchParams;
+  const gAccount = googleEnabled() ? await googleAccount() : null;
   const [{ data: clients }, { data: tasks }] = await Promise.all([
     db().from("clients").select("*").order("paid_at", { ascending: false }).returns<Client[]>(),
     db().from("tasks").select("*").is("done_at", null).order("due_at", { ascending: true, nullsFirst: false }).returns<Task[]>(),
@@ -19,6 +23,22 @@ export default async function AdminHome() {
 
   return (
     <div className="space-y-10">
+      {googleMsg && <p className="rounded-lg bg-blue-50 p-3 text-sm text-blue-900">{googleMsg}</p>}
+      <section className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-neutral-200 bg-white p-4">
+        <div>
+          <p className="text-sm font-medium">Google (Search Console and Business Profile)</p>
+          <p className="text-xs text-neutral-500">
+            {!googleEnabled()
+              ? "Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in Vercel to turn this on."
+              : gAccount
+                ? `Connected as ${gAccount.email ?? "your Google account"} on ${fmt(gAccount.connected_at)}. Rankings and profile numbers are on.`
+                : "Not connected. Connect the Google account that manages your clients' Search Console and Business Profiles."}
+          </p>
+        </div>
+        {googleEnabled() && (
+          <a href="/admin/google/start" className={gAccount ? btnQuiet : btn}>{gAccount ? "Reconnect" : "Connect Google"}</a>
+        )}
+      </section>
       <section className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         <Stat label="Building" value={count("building")} />
         <Stat label="Awaiting form" value={count("awaiting_form")} />

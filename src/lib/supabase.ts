@@ -36,6 +36,7 @@ export type Client = {
   cancelled_at: string | null;
   notes: string | null;
   report_note: string | null;
+  dashboard_token: string;
 };
 
 export type Task = {

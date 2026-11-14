@@ -26,7 +26,6 @@ const comboServices = (c: SiteContent) => c.services.slice(0, COMBO_SERVICES);
 const comboAreas = (c: SiteContent) => c.areas.slice(0, COMBO_AREAS);
 const areaSlug = (a: string) => slugify(a);
 const lc = (s: string) => s.toLowerCase();
-const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 function hash(s: string) {
   let h = 0;

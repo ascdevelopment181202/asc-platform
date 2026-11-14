@@ -91,3 +91,15 @@ export async function sendReportNow(formData: FormData) {
   await claimOnce(client.id, `report_manual_${Date.now()}`);
   revalidatePath(`/admin/clients/${client.id}`);
 }
+
+export async function saveGoogleSettings(formData: FormData) {
+  const clientId = String(formData.get("clientId"));
+  const gsc = String(formData.get("gsc") ?? "").trim() || null;
+  const loc = String(formData.get("gbp") ?? "").trim();
+  const [gbpLocation, ...title] = loc ? loc.split("|") : [""];
+  await db()
+    .from("sites")
+    .update({ gsc_property: gsc, gbp_location: gbpLocation || null, gbp_title: title.join("|") || null, updated_at: new Date().toISOString() })
+    .eq("client_id", clientId);
+  revalidatePath(`/admin/clients/${clientId}`);
+}
