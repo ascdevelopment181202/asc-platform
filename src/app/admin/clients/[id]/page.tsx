@@ -6,6 +6,9 @@ import { clientLabel } from "@/lib/clients";
 import { formLink } from "@/lib/onboarding";
 import { FIELD_LABELS } from "@/lib/onboarding-fields";
 import { completeTask, markLive, resendWelcome, saveNotes } from "../../actions";
+import { generateSiteAction, saveDomain, setPublished } from "../../site-actions";
+import type { Site } from "@/lib/sites";
+import { env } from "@/lib/env";
 import { btn, btnQuiet, Countdown, fmt, input, StatusPill } from "../../ui";
 
 export const dynamic = "force-dynamic";
@@ -33,11 +36,15 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
   const { data: c } = await supabase.from("clients").select("*").eq("id", id).maybeSingle<Client>();
   if (!c) notFound();
 
-  const [{ data: sub }, { data: messages }, { data: tasks }] = await Promise.all([
+  type Enquiry = { id: string; created_at: string; name: string; phone: string | null; email: string | null; service: string | null; message: string | null };
+  const [{ data: sub }, { data: messages }, { data: tasks }, { data: site }, { data: leads }] = await Promise.all([
     supabase.from("onboarding_submissions").select("*").eq("client_id", id).order("created_at", { ascending: false }).limit(1).maybeSingle<Submission>(),
     supabase.from("client_messages").select("id, kind, created_at").eq("client_id", id).order("created_at").returns<Message[]>(),
     supabase.from("tasks").select("*").eq("client_id", id).is("done_at", null).returns<Task[]>(),
+    supabase.from("sites").select("*").eq("client_id", id).maybeSingle<Site>(),
+    supabase.from("enquiries").select("id, created_at, name, phone, email, service, message").eq("client_id", id).order("created_at", { ascending: false }).limit(50).returns<Enquiry[]>(),
   ]);
+  const previewUrl = site ? `${env.appUrl}/s/${site.slug}` : null;
 
   const paths = sub ? [sub.logo_path, ...sub.photo_paths].filter((p): p is string => !!p) : [];
   const { data: signed } = paths.length
@@ -91,6 +98,25 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
             )}
           </Card>
 
+          <Card title={`Leads from website (${leads?.length ?? 0})`}>
+            {(leads ?? []).length === 0 ? (
+              <p className="text-sm text-neutral-500">No enquiries yet.</p>
+            ) : (
+              <ul className="divide-y divide-neutral-100 text-sm">
+                {(leads ?? []).map((l) => (
+                  <li key={l.id} className="py-2.5">
+                    <div className="flex justify-between gap-3">
+                      <span className="font-medium">{l.name}{l.service ? ` · ${l.service}` : ""}</span>
+                      <span className="shrink-0 text-neutral-500">{fmt(l.created_at)}</span>
+                    </div>
+                    <p className="text-neutral-600">{[l.phone, l.email].filter(Boolean).join(" · ")}</p>
+                    {l.message && <p className="mt-1 text-neutral-500">{l.message}</p>}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
+
           {paths.length > 0 && (
             <Card title={`Logo and photos (${paths.length})`}>
               <div className="grid grid-cols-3 gap-3 sm:grid-cols-4">
@@ -112,6 +138,48 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
         </div>
 
         <div className="space-y-6">
+          <Card title="Website">
+            {!sub ? (
+              <p className="text-sm text-neutral-500">Available once the onboarding form is in.</p>
+            ) : !site ? (
+              <form action={generateSiteAction}>
+                <input type="hidden" name="clientId" value={c.id} />
+                <p className="mb-3 text-sm text-neutral-600">Builds their site from the form answers and photos.</p>
+                <button className={`${btn} w-full`}>Generate site</button>
+              </form>
+            ) : (
+              <div className="space-y-4 text-sm">
+                <div className="flex items-center justify-between">
+                  <span className={site.published ? "font-medium text-green-700" : "font-medium text-amber-700"}>{site.published ? "Published" : "Draft"}</span>
+                  <a href={previewUrl!} target="_blank" rel="noreferrer" className="text-blue-700 underline">Preview</a>
+                </div>
+                {site.domain && site.published && (
+                  <a href={`https://${site.domain}`} target="_blank" rel="noreferrer" className="block break-all text-blue-700 underline">https://{site.domain}</a>
+                )}
+                <div className="flex gap-2">
+                  <form action={generateSiteAction} className="flex-1">
+                    <input type="hidden" name="clientId" value={c.id} />
+                    <button className={`${btnQuiet} w-full`}>Rebuild</button>
+                  </form>
+                  <form action={setPublished} className="flex-1">
+                    <input type="hidden" name="clientId" value={c.id} />
+                    <input type="hidden" name="published" value={site.published ? "false" : "true"} />
+                    <button className={`${site.published ? btnQuiet : btn} w-full`}>{site.published ? "Unpublish" : "Publish"}</button>
+                  </form>
+                </div>
+                <form action={saveDomain} className="space-y-2">
+                  <input type="hidden" name="clientId" value={c.id} />
+                  <label className="block text-xs font-medium uppercase tracking-wide text-neutral-500">Custom domain</label>
+                  <div className="flex gap-2">
+                    <input name="domain" defaultValue={site.domain ?? ""} placeholder="smithplumbing.co.uk" className={`${input} min-w-0 flex-1`} />
+                    <button className={btnQuiet}>Save</button>
+                  </div>
+                  <p className="text-xs text-neutral-500">Then add the domain to the asc-platform project in Vercel and point its DNS there.</p>
+                </form>
+              </div>
+            )}
+          </Card>
+
           <Card title="Go live">
             <form action={markLive} className="space-y-3 text-sm">
               <input type="hidden" name="clientId" value={c.id} />

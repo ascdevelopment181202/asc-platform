@@ -1,7 +1,31 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-/** Password-protects /admin with HTTP Basic auth (any username, password = ADMIN_PASSWORD). */
+/** Hosts that serve the platform itself. Any other host is a client's custom domain. */
+function isPlatformHost(host: string) {
+  const appHost = (process.env.APP_URL ?? "").replace(/^https?:\/\//, "").replace(/\/.*$/, "");
+  return host === appHost || host.endsWith(".vercel.app") || host.startsWith("localhost") || host.startsWith("127.0.0.1");
+}
+
 export function proxy(request: NextRequest) {
+  const host = (request.headers.get("host") ?? "").toLowerCase();
+  const { pathname } = request.nextUrl;
+
+  // Client custom domain: serve their site from /s/<domain>/...
+  if (host && !isPlatformHost(host)) {
+    if (pathname.startsWith("/s/") || pathname.startsWith("/admin") || pathname.startsWith("/onboarding")) {
+      return new NextResponse("Not found", { status: 404 });
+    }
+    const url = request.nextUrl.clone();
+    url.pathname = `/s/${host.replace(/^www\./, "")}${pathname === "/" ? "" : pathname}`;
+    return NextResponse.rewrite(url);
+  }
+
+  if (pathname === "/admin" || pathname.startsWith("/admin/")) return adminAuth(request);
+  return NextResponse.next();
+}
+
+/** Password-protects /admin with HTTP Basic auth (any username, password = ADMIN_PASSWORD). */
+function adminAuth(request: NextRequest) {
   const password = process.env.ADMIN_PASSWORD;
   if (!password) return new NextResponse("ADMIN_PASSWORD is not set", { status: 500 });
 
@@ -23,4 +47,5 @@ function timingSafeEqual(a: string, b: string) {
   return diff === 0;
 }
 
-export const config = { matcher: ["/admin", "/admin/:path*"] };
+// Everything except Next internals, API routes and static files.
+export const config = { matcher: ["/((?!_next/|api/|favicon.ico|robots.txt|sitemap.xml|.*\\.[a-z0-9]+$).*)"] };
