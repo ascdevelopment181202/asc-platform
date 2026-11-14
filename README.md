@@ -24,7 +24,7 @@ Stripe events handled: `checkout.session.completed`, `invoice.payment_failed` (s
 
 ### 1. Supabase
 - Create a project at supabase.com.
-- SQL Editor: paste and run `supabase/migrations/0001_onboarding.sql`. This creates the tables and the private `client-assets` storage bucket.
+- SQL Editor: paste and run `supabase/migrations/20261114160000_onboarding.sql`. This creates the tables and the private `client-assets` storage bucket.
 - Copy the project URL, anon key and service role key into your env.
 
 ### 2. Resend
