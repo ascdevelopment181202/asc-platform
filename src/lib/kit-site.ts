@@ -49,13 +49,13 @@ export function toKitSite(c: SiteContent, opts: { siteId: string; base: string; 
     c.yearsTrading && /^\d+(\.\d+)?$/.test(c.yearsTrading)
       ? { v: c.yearsTrading, count: Number(c.yearsTrading), l: "years in business" }
       : null,
-    c.accreditations[0] ? { v: c.accreditations[0], l: "registered" } : null,
+    c.accreditations[0] ? { v: c.accreditations[0], l: "accredited" } : null,
     c.emergency ? { v: "24/7", l: "emergency call-outs" } : { v: "Free", l: "no-obligation quotes" },
     c.areas.length > 1 ? { v: String(c.areas.length), count: c.areas.length, l: "towns covered" } : null,
   ].filter(Boolean);
 
   const extras: [string, string][] = [
-    ...c.accreditations.slice(0, 2).map((a): [string, string] => ["shield-check", `${a} registered`]),
+    ...c.accreditations.slice(0, 2).map((a): [string, string] => ["shield-check", /gas safe|niceic|napit|oftec/i.test(a) && !/regist/i.test(a) ? `${a} registered` : a]),
     ["clipboard-check", "Fixed price agreed before we start"],
     ["house", "Tidy, respectful work in your home"],
     ["wrench", "All work guaranteed"],

@@ -259,3 +259,7 @@ form{padding:26px 20px}
 .past-hero .mobile-bar{transform:none}
 }
 @media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}*{animation:none!important;transition:none!important}.hero p,.hero .actions{opacity:1!important}.w>span{transform:none!important}.marquee,.rrow{overflow-x:auto}.marquee,.rwall{-webkit-mask-image:none;mask-image:none}}
+.card h3 a{text-decoration:none;color:inherit}
+.card h3 a::after{content:"";position:absolute;inset:0}
+.card{position:relative}
+.card h3 a:hover{text-decoration:underline;text-underline-offset:4px}
