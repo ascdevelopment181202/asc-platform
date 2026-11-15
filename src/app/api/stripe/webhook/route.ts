@@ -41,6 +41,9 @@ async function handle(event: Stripe.Event) {
     case "checkout.session.completed": {
       const session = event.data.object as Stripe.Checkout.Session;
       if (session.mode !== "subscription" || session.payment_status === "unpaid") return;
+      // The live account also takes payments for other work. Only checkouts from the
+      // ASC Platform payment link (tagged asc_platform=onboarding) start onboarding.
+      if (session.livemode && session.metadata?.asc_platform !== "onboarding") return;
       const email = session.customer_details?.email ?? session.customer_email;
       if (!email) throw new Error(`Checkout ${session.id} has no customer email`);
       const businessField = session.custom_fields?.find((f) => /business/i.test(f.key));
