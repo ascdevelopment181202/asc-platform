@@ -40,7 +40,8 @@ const MESSAGE_LABELS: Record<string, string> = {
   day30_report: "Day-30 report task created",
 };
 
-export default async function ClientPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function ClientPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ sms_ok?: string; sms_err?: string }> }) {
+  const { sms_ok: smsOk, sms_err: smsErr } = await searchParams;
   const { id } = await params;
   const supabase = db();
   const { data: c } = await supabase.from("clients").select("*").eq("id", id).maybeSingle<Client>();
@@ -314,7 +315,10 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
             </Card>
           )}
 
+          <div id="sms" />
           <Card title="Missed calls & reviews">
+            {smsOk && <p className="mb-3 rounded-lg bg-green-50 p-3 text-sm text-green-800">{smsOk}</p>}
+            {smsErr && <p className="mb-3 rounded-lg bg-red-50 p-3 text-sm text-red-800">{smsErr}</p>}
             <div className="mb-3 space-y-1 text-sm">
               <p>
                 Status: <strong className={c.sms_enabled ? "text-green-700" : "text-neutral-500"}>{c.sms_enabled ? "Texts on" : "Texts off"}</strong>
