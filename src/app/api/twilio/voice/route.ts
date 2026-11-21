@@ -54,11 +54,13 @@ export async function POST(request: Request) {
   // Missed calls show in the inbox as unread, like GoHighLevel.
   if (contactId) await bumpConversation(contactId, "Missed call", "call", true);
 
+  let texted = skipped === "repeat_caller"; // they already have a text from a moment ago
   if (!skipped && from) {
     const sent = await sendSms({ client, to: from, body: missedCallText(client, now), kind: "missed_call", contactId });
     await db().from("calls").update(sent.ok ? { text_sent: true } : { skipped_reason: "send_failed" }).eq("id", call.id);
+    texted = sent.ok;
   }
 
-  if (skipped && skipped !== "repeat_caller") return sayAndHangUp("Sorry we missed your call. Please try again later.");
+  if (!texted) return sayAndHangUp("Sorry we missed your call. We'll get back to you as soon as we can.");
   return sayAndHangUp("Sorry we missed your call. We've sent you a text and will get back to you shortly.");
 }
