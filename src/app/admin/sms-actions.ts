@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { db, type Client } from "@/lib/supabase";
 import { displayPhone, forwardingCodes, normalizePhone, type Country } from "@/lib/phone";
 import { countryOf, sendSms } from "@/lib/sms";
@@ -14,7 +15,7 @@ import { firstNameOf } from "@/lib/onboarding";
 
 const text = (formData: FormData, key: string) => String(formData.get(key) ?? "").trim() || null;
 
-export async function saveSmsSettings(formData: FormData) {
+async function saveSmsSettingsInner(formData: FormData) {
   const id = String(formData.get("clientId"));
   const { data: before } = await db().from("clients").select("*").eq("id", id).single<Client>();
   if (!before) throw new Error("Client not found");
@@ -63,7 +64,7 @@ export async function saveSmsSettings(formData: FormData) {
 }
 
 /** Sends a test text to the owner from their Twilio number. Run it on the onboarding call. */
-export async function sendTestText(formData: FormData) {
+async function sendTestTextInner(formData: FormData) {
   const id = String(formData.get("clientId"));
   const { data: c } = await db().from("clients").select("*").eq("id", id).single<Client>();
   if (!c?.owner_mobile || !c.twilio_number) throw new Error("Set the Twilio number and owner mobile first");
@@ -81,7 +82,7 @@ export async function sendTestText(formData: FormData) {
  * One click after the onboarding form: buys their UK mobile number, points it at the app,
  * switches texts on, and sends the owner their app link and forwarding codes by text and email.
  */
-export async function setUpPhone(formData: FormData) {
+async function setUpPhoneInner(formData: FormData) {
   const id = String(formData.get("clientId"));
   const { data: c } = await db().from("clients").select("*").eq("id", id).single<Client>();
   if (!c) throw new Error("Client not found");
@@ -109,7 +110,7 @@ export async function setUpPhone(formData: FormData) {
 }
 
 /** Sends the app link and forwarding codes again (e.g. they lost the text). */
-export async function resendPhoneWelcome(formData: FormData) {
+async function resendPhoneWelcomeInner(formData: FormData) {
   const id = String(formData.get("clientId"));
   const { data: c } = await db().from("clients").select("*").eq("id", id).single<Client>();
   if (!c?.twilio_number || !c.owner_mobile) throw new Error("Set up their phone first");
@@ -149,4 +150,43 @@ async function sendWelcome(c: Client) {
     if (country === "US") throw new Error("Number is set up, but the welcome email failed. Send them the app link from this page.");
   }
   if (!text.ok) throw new Error(`Number is set up, but the welcome text failed: ${"error" in text ? text.error : ""}`);
+}
+
+/** Turns Twilio's error codes into what to do next. */
+function friendly(err: unknown) {
+  const msg = err instanceof Error ? err.message : String(err);
+  if (msg.includes("21404")) return "Your Twilio account is still on the free trial, which only allows one number. Upgrade it (\"Upgrade Now\" at the top of the Twilio console), then click Set up phone again. Nothing was charged.";
+  if (msg.includes("21608") || msg.includes("21219")) return "Twilio's trial can only text verified numbers. Upgrade Twilio, or add this number under Phone Numbers, then Verified Caller IDs.";
+  if (msg.includes("20003")) return "Twilio rejected the account details. Check TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN in Vercel.";
+  return msg;
+}
+
+/** Runs an admin action and shows the result on the client page instead of crashing it. */
+async function withFeedback(formData: FormData, run: (f: FormData) => Promise<void>, ok: string) {
+  const id = String(formData.get("clientId"));
+  let result: string;
+  try {
+    await run(formData);
+    result = `sms_ok=${encodeURIComponent(ok)}`;
+  } catch (err) {
+    console.error("Admin phone action failed", id, err);
+    result = `sms_err=${encodeURIComponent(friendly(err))}`;
+  }
+  redirect(`/admin/clients/${id}?${result}#sms`);
+}
+
+export async function saveSmsSettings(formData: FormData) {
+  await withFeedback(formData, saveSmsSettingsInner, "Saved.");
+}
+
+export async function sendTestText(formData: FormData) {
+  await withFeedback(formData, sendTestTextInner, "Test text sent.");
+}
+
+export async function setUpPhone(formData: FormData) {
+  await withFeedback(formData, setUpPhoneInner, "Phone set up. Their app link and forwarding code are on their way.");
+}
+
+export async function resendPhoneWelcome(formData: FormData) {
+  await withFeedback(formData, resendPhoneWelcomeInner, "App link and forwarding code sent again.");
 }
