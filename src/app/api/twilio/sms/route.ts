@@ -1,4 +1,6 @@
+import { after } from "next/server";
 import { db, type Client } from "@/lib/supabase";
+import { notifyClient } from "@/lib/push";
 import { isFromTwilio, readTwilioForm, twiml } from "@/lib/twilio";
 import { displayUk, normalizeUk } from "@/lib/phone";
 import { bumpConversation, cancelPendingReviews, clientByTwilioNumber, createJob, sendSms, threadLink, upsertContact } from "@/lib/sms";
@@ -50,6 +52,14 @@ export async function POST(request: Request) {
   if (!reply) return twiml(); // Twilio retry of a message we already have
 
   await bumpConversation(contact.id, body || "(no text)", "inbound", true);
+  after(() =>
+    notifyClient(client.id, {
+      title: contact.name ?? displayUk(from),
+      body: body || "Sent a message",
+      url: `/m/${client.dashboard_token}/c/${contact.id}`,
+      tag: contact.id,
+    }),
+  );
   // Any reply stops the remaining review reminders; the owner takes it from here.
   await cancelPendingReviews(contact.id, "replied");
 
