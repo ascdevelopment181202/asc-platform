@@ -37,6 +37,18 @@ export type Client = {
   notes: string | null;
   report_note: string | null;
   dashboard_token: string;
+  // Missed call text back + review requests
+  twilio_number: string | null;
+  owner_mobile: string | null;
+  google_review_url: string | null;
+  sms_enabled: boolean;
+  missed_call_template: string | null;
+  missed_call_after_hours_template: string | null;
+  review_template: string | null;
+  review_followup_template: string | null;
+  timezone: string;
+  business_hours: { start: string; end: string; days: number[] };
+  last_forwarded_call_at: string | null;
 };
 
 export type Task = {

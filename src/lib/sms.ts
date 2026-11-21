@@ -1,0 +1,214 @@
+import "server-only";
+import { db, type Client } from "./supabase";
+import { clientLabel } from "./clients";
+import { env } from "./env";
+import { isUkMobile, normalizeUk } from "./phone";
+import { twilioSend } from "./twilio";
+
+export type Contact = {
+  id: string;
+  client_id: string;
+  phone: string;
+  name: string | null;
+  opted_out_at: string | null;
+  last_review_request_at: string | null;
+};
+
+export type Job = {
+  id: string;
+  client_id: string;
+  contact_id: string;
+  source: "dashboard" | "sms" | "bulk";
+  review_token: string;
+  completed_at: string;
+  review_clicked_at: string | null;
+  cancelled_at: string | null;
+  cancelled_reason: string | null;
+};
+
+export type SmsKind = "missed_call" | "review" | "owner_forward" | "owner_confirm" | "test";
+
+const HOUR = 3600_000;
+const DAY = 24 * HOUR;
+
+/** Review texts after a job: first ask, then two gentle reminders. Bulk uploads get the first ask only. */
+export const REVIEW_STEPS_MS = [2 * HOUR, 4 * DAY, 14 * DAY];
+/** Don't ask the same customer for another review within this window. */
+export const REVIEW_COOLDOWN_MS = 180 * DAY;
+/** A caller who rings again within this window doesn't get a second text. */
+export const REPEAT_CALLER_MS = 30 * 60_000;
+/** Bulk uploads go out at most this many per client per day. */
+export const BULK_PER_DAY = 40;
+
+export const DEFAULT_TEMPLATES = {
+  missed_call: "Hi, it's {business}. Sorry we missed your call! We'll ring you back shortly, or reply to this text with what you need.",
+  missed_call_after_hours: "Hi, it's {business}. Sorry we missed you, we're closed right now. Reply with what you need and we'll get back to you first thing.",
+  review: "Hi {name}, thanks for choosing {business}. If you were happy with the job, a quick Google review would really help us: {link}",
+  review_followup: "Hi {name}, a quick reminder from {business}. If you have a minute, a Google review would mean a lot: {link} Reply STOP to opt out",
+};
+
+export const TEMPLATE_HELP = "Use {business} for the business name, {name} for the customer's first name and {link} for the review link.";
+
+export function fill(template: string, vars: Record<string, string>) {
+  return template.replace(/\{(\w+)\}/g, (m, k: string) => vars[k] ?? m).replace(/\s+/g, " ").trim();
+}
+
+const firstName = (name: string | null) => name?.trim().split(/\s+/)[0] || "there";
+
+/** Hour, minute and weekday (1 = Monday ... 7 = Sunday) in the client's time zone. */
+export function localTime(date: Date, timeZone: string) {
+  const parts = new Intl.DateTimeFormat("en-GB", { timeZone, hour: "2-digit", minute: "2-digit", weekday: "short", hourCycle: "h23" }).formatToParts(date);
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
+  const weekday = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].indexOf(get("weekday")) + 1;
+  return { hour: Number(get("hour")), minute: Number(get("minute")), weekday };
+}
+
+const toMinutes = (hhmm: string) => {
+  const [h, m] = hhmm.split(":").map(Number);
+  return h * 60 + (m || 0);
+};
+
+/** Is the business open right now, by its opening hours? Used to pick the missed-call text. */
+export function isOpen(c: Pick<Client, "timezone" | "business_hours">, date = new Date()) {
+  const t = localTime(date, c.timezone || "Europe/London");
+  const hours = c.business_hours ?? { start: "08:00", end: "18:00", days: [1, 2, 3, 4, 5, 6] };
+  const now = t.hour * 60 + t.minute;
+  return hours.days.includes(t.weekday) && now >= toMinutes(hours.start) && now < toMinutes(hours.end);
+}
+
+/** Review texts only go out between 9am and 7pm local time. */
+export function inSendingWindow(c: Pick<Client, "timezone">, date = new Date()) {
+  const { hour } = localTime(date, c.timezone || "Europe/London");
+  return hour >= 9 && hour < 19;
+}
+
+export const businessName = (c: Client) => clientLabel(c);
+export const reviewLink = (job: Pick<Job, "review_token">) => `${env.appUrl}/v/${job.review_token}`;
+
+export function missedCallText(c: Client, date = new Date()) {
+  const open = isOpen(c, date);
+  const template = open
+    ? c.missed_call_template || DEFAULT_TEMPLATES.missed_call
+    : c.missed_call_after_hours_template || DEFAULT_TEMPLATES.missed_call_after_hours;
+  return fill(template, { business: businessName(c) });
+}
+
+export function reviewText(c: Client, contact: Pick<Contact, "name">, job: Pick<Job, "review_token">, step: number) {
+  const template = step === 1 ? c.review_template || DEFAULT_TEMPLATES.review : c.review_followup_template || DEFAULT_TEMPLATES.review_followup;
+  return fill(template, { business: businessName(c), name: firstName(contact.name), link: reviewLink(job) });
+}
+
+/** Finds or creates the customer record. Fills in a name if we didn't have one. */
+export async function upsertContact(clientId: string, phone: string, name?: string | null): Promise<Contact> {
+  const { data: existing } = await db().from("contacts").select("*").eq("client_id", clientId).eq("phone", phone).maybeSingle<Contact>();
+  if (existing) {
+    if (name && name.trim() && name.trim() !== existing.name) {
+      await db().from("contacts").update({ name: name.trim() }).eq("id", existing.id);
+      return { ...existing, name: name.trim() };
+    }
+    return existing;
+  }
+  const { data, error } = await db()
+    .from("contacts")
+    .insert({ client_id: clientId, phone, name: name?.trim() || null })
+    .select("*")
+    .single<Contact>();
+  if (error) {
+    // Two requests at once for the same number: read the row the other one made.
+    if (error.code === "23505") return upsertContact(clientId, phone, name);
+    throw error;
+  }
+  return data;
+}
+
+/** Sends an SMS from the client's Twilio number and logs it. Never throws: failures are logged with the error. */
+export async function sendSms(p: { client: Client; to: string; body: string; kind: SmsKind; contactId?: string | null }) {
+  const { data: log } = await db()
+    .from("sms_log")
+    .insert({ client_id: p.client.id, contact_id: p.contactId ?? null, to_number: p.to, body: p.body, kind: p.kind })
+    .select("id")
+    .single<{ id: string }>();
+  try {
+    if (!p.client.twilio_number) throw new Error("No Twilio number set for this client");
+    const sent = await twilioSend(p.client.twilio_number, p.to, p.body);
+    if (log) await db().from("sms_log").update({ twilio_message_sid: sent.sid, status: sent.status }).eq("id", log.id);
+    return { ok: true as const, logId: log?.id ?? null };
+  } catch (err) {
+    const error = err instanceof Error ? err.message : String(err);
+    console.error("SMS send failed", p.client.id, p.kind, error);
+    if (log) await db().from("sms_log").update({ status: "failed", error }).eq("id", log.id);
+    return { ok: false as const, logId: log?.id ?? null, error };
+  }
+}
+
+/** Stops any review texts still waiting for this customer (they replied, clicked or opted out). */
+export async function cancelPendingReviews(contactId: string, reason: string) {
+  const { data: jobs } = await db().from("jobs").select("id").eq("contact_id", contactId).is("cancelled_at", null).returns<{ id: string }[]>();
+  const ids = (jobs ?? []).map((j) => j.id);
+  if (!ids.length) return;
+  const now = new Date().toISOString();
+  await db().from("review_messages").update({ cancelled_at: now }).in("job_id", ids).is("sent_at", null).is("cancelled_at", null);
+  if (reason !== "replied") await db().from("jobs").update({ cancelled_at: now, cancelled_reason: reason }).in("id", ids).is("cancelled_at", null);
+}
+
+export type CreateJobResult = { ok: true; job: Job; contact: Contact; firstSendAt: Date } | { ok: false; error: string };
+
+/**
+ * One finished job = one set of review texts. Used by the dashboard button, the owner's DONE text and bulk uploads.
+ * Bulk jobs get a single text at `startAt`; everything else gets the full sequence starting 2 hours from now.
+ */
+export async function createJob(
+  c: Client,
+  input: { phone: string; name?: string | null; source: Job["source"]; startAt?: Date },
+): Promise<CreateJobResult> {
+  const phone = normalizeUk(input.phone);
+  if (!isUkMobile(phone)) return { ok: false, error: "That doesn't look like a UK mobile number (07...)." };
+  if (!c.google_review_url) return { ok: false, error: "No Google review link is set up yet. Ask ASC to add it." };
+
+  const contact = await upsertContact(c.id, phone, input.name);
+  if (contact.opted_out_at) return { ok: false, error: "This customer has opted out of texts." };
+  if (contact.last_review_request_at && Date.now() - Date.parse(contact.last_review_request_at) < REVIEW_COOLDOWN_MS) {
+    return { ok: false, error: "This customer was already asked for a review in the last 6 months." };
+  }
+
+  const { data: job, error } = await db()
+    .from("jobs")
+    .insert({ client_id: c.id, contact_id: contact.id, source: input.source })
+    .select("*")
+    .single<Job>();
+  if (error) throw error;
+
+  const start = input.startAt ?? new Date(Date.now() + REVIEW_STEPS_MS[0]);
+  const steps = input.source === "bulk" ? [0] : REVIEW_STEPS_MS.map((ms) => ms - REVIEW_STEPS_MS[0]);
+  const { error: stepError } = await db()
+    .from("review_messages")
+    .insert(steps.map((offset, i) => ({ job_id: job.id, client_id: c.id, step: i + 1, send_at: new Date(start.getTime() + offset).toISOString() })));
+  if (stepError) throw stepError;
+
+  await db().from("contacts").update({ last_review_request_at: new Date().toISOString() }).eq("id", contact.id);
+  return { ok: true, job, contact, firstSendAt: start };
+}
+
+/** Parses pasted lines or a CSV export into name + number pairs. Accepts "Name, 07..." or "07..., Name" or just a number. */
+export function parseCustomerList(text: string): { name: string | null; phone: string }[] {
+  const rows: { name: string | null; phone: string }[] = [];
+  const seen = new Set<string>();
+  for (const line of text.split(/\r?\n/)) {
+    const cells = line.split(/[,;\t]/).map((s) => s.trim().replace(/^"|"$/g, "")).filter(Boolean);
+    if (!cells.length) continue;
+    const phoneCell = cells.find((cell) => isUkMobile(normalizeUk(cell)));
+    if (!phoneCell) continue;
+    const phone = normalizeUk(phoneCell)!;
+    if (seen.has(phone)) continue;
+    seen.add(phone);
+    const name = cells.find((cell) => cell !== phoneCell && /[a-z]/i.test(cell) && !/@/.test(cell)) ?? null;
+    rows.push({ name, phone });
+  }
+  return rows;
+}
+
+export async function clientByTwilioNumber(number: string | undefined) {
+  if (!number) return null;
+  const { data } = await db().from("clients").select("*").eq("twilio_number", number).maybeSingle<Client>();
+  return data;
+}

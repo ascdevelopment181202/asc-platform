@@ -15,6 +15,9 @@ import { seoAiEnabled } from "@/lib/seo-ai";
 import type { Site } from "@/lib/sites";
 import { env } from "@/lib/env";
 import { btn, btnQuiet, Countdown, fmt, input, StatusPill } from "../../ui";
+import { saveSmsSettings, sendTestText } from "../../sms-actions";
+import { DEFAULT_TEMPLATES, TEMPLATE_HELP } from "@/lib/sms";
+import { displayUk } from "@/lib/phone";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -50,6 +53,8 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
     supabase.from("sites").select("*").eq("client_id", id).maybeSingle<Site>(),
     supabase.from("enquiries").select("id, created_at, name, phone, email, service, message").eq("client_id", id).order("created_at", { ascending: false }).limit(50).returns<Enquiry[]>(),
   ]);
+  type SmsRow = { id: string; created_at: string; to_number: string; kind: string; status: string; error: string | null };
+  const { data: smsLog } = await supabase.from("sms_log").select("id, created_at, to_number, kind, status, error").eq("client_id", id).order("created_at", { ascending: false }).limit(8).returns<SmsRow[]>();
   const previewUrl = site ? `${env.appUrl}/s/${site.slug}` : null;
   const seoTotal = site ? allPaths(site.content).length - 1 : 0;
   const { count: seoWritten } = site
@@ -306,6 +311,78 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
               {stats?.insights.errors.length ? <p className="mt-2 text-xs text-red-700">{stats.insights.errors.join(" ")}</p> : null}
             </Card>
           )}
+
+          <Card title="Missed calls & reviews">
+            <div className="mb-3 space-y-1 text-sm">
+              <p>
+                Status: <strong className={c.sms_enabled ? "text-green-700" : "text-neutral-500"}>{c.sms_enabled ? "Texts on" : "Texts off"}</strong>
+                {c.last_forwarded_call_at && <span className="text-neutral-500"> · last forwarded call {fmt(c.last_forwarded_call_at)}</span>}
+              </p>
+              <p className="break-all text-xs text-neutral-600">
+                Client app: <a className="underline" href={`${env.appUrl}/m/${c.dashboard_token}`}>{`${env.appUrl}/m/${c.dashboard_token}`}</a>
+              </p>
+              {c.twilio_number && (
+                <p className="text-xs text-neutral-600">
+                  Forwarding codes for their phone: <code>**61*{c.twilio_number}*11*20#</code> (no answer), <code>**67*{c.twilio_number}#</code> (busy), <code>**62*{c.twilio_number}#</code> (unreachable)
+                </p>
+              )}
+            </div>
+            <form action={saveSmsSettings} className="space-y-2 text-sm">
+              <input type="hidden" name="clientId" value={c.id} />
+              <label className="block">Twilio number<input name="twilio_number" defaultValue={c.twilio_number ?? ""} placeholder="+447..." className={`${input} mt-1 w-full`} /></label>
+              <label className="block">Owner&apos;s mobile (gets replies, sends DONE)<input name="owner_mobile" defaultValue={c.owner_mobile ?? ""} placeholder="07..." className={`${input} mt-1 w-full`} /></label>
+              <label className="block">Google review link<input name="google_review_url" defaultValue={c.google_review_url ?? ""} placeholder="https://search.google.com/local/writereview?placeid=..." className={`${input} mt-1 w-full`} /></label>
+              <fieldset className="flex flex-wrap items-center gap-2">
+                <legend className="mb-1">Opening hours (picks the missed-call text)</legend>
+                <input name="hours_start" type="time" defaultValue={c.business_hours?.start ?? "08:00"} className={input} />
+                <span>to</span>
+                <input name="hours_end" type="time" defaultValue={c.business_hours?.end ?? "18:00"} className={input} />
+                <div className="flex flex-wrap gap-2 text-xs">
+                  {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d, i) => (
+                    <label key={d} className="flex items-center gap-1">
+                      <input type="checkbox" name="hours_days" value={i + 1} defaultChecked={(c.business_hours?.days ?? [1, 2, 3, 4, 5, 6]).includes(i + 1)} />
+                      {d}
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+              <details>
+                <summary className="cursor-pointer text-neutral-600">Text templates (leave blank for the defaults)</summary>
+                <p className="mt-1 text-xs text-neutral-500">{TEMPLATE_HELP}</p>
+                {([
+                  ["missed_call_template", "Missed call, open", DEFAULT_TEMPLATES.missed_call],
+                  ["missed_call_after_hours_template", "Missed call, closed", DEFAULT_TEMPLATES.missed_call_after_hours],
+                  ["review_template", "Review request", DEFAULT_TEMPLATES.review],
+                  ["review_followup_template", "Review reminder", DEFAULT_TEMPLATES.review_followup],
+                ] as const).map(([name, label, placeholder]) => (
+                  <label key={name} className="mt-2 block text-xs">
+                    {label}
+                    <textarea name={name} rows={3} defaultValue={c[name] ?? ""} placeholder={placeholder} className={`${input} mt-1 w-full`} />
+                  </label>
+                ))}
+              </details>
+              <label className="flex items-center gap-2">
+                <input type="checkbox" name="sms_enabled" defaultChecked={c.sms_enabled} /> Texts switched on
+              </label>
+              <button className={`${btn} w-full`}>Save</button>
+            </form>
+            {c.twilio_number && c.owner_mobile && (
+              <form action={sendTestText} className="mt-2">
+                <input type="hidden" name="clientId" value={c.id} />
+                <button className={`${btnQuiet} w-full`}>Send test text to {displayUk(c.owner_mobile)}</button>
+              </form>
+            )}
+            {(smsLog ?? []).length > 0 && (
+              <ul className="mt-3 space-y-1 border-t border-neutral-100 pt-3 text-xs">
+                {(smsLog ?? []).map((m) => (
+                  <li key={m.id} className="flex justify-between gap-2">
+                    <span>{m.kind.replace("_", " ")} to {displayUk(m.to_number)}</span>
+                    <span className={m.status === "failed" || m.status === "undelivered" ? "text-red-700" : "text-neutral-500"} title={m.error ?? undefined}>{m.status} · {fmt(m.created_at)}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
 
           <Card title="Go live">
             <form action={markLive} className="space-y-3 text-sm">
