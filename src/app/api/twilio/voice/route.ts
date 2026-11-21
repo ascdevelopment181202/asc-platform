@@ -1,7 +1,7 @@
 import { db } from "@/lib/supabase";
 import { isFromTwilio, readTwilioForm, sayAndHangUp, twiml } from "@/lib/twilio";
 import { isUkMobile, normalizeUk } from "@/lib/phone";
-import { clientByTwilioNumber, missedCallText, REPEAT_CALLER_MS, sendSms, upsertContact } from "@/lib/sms";
+import { bumpConversation, clientByTwilioNumber, missedCallText, REPEAT_CALLER_MS, sendSms, upsertContact } from "@/lib/sms";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -51,6 +51,8 @@ export async function POST(request: Request) {
     .single<{ id: string }>();
   // Twilio retried a call we already handled.
   if (!call) return twiml("<Hangup/>");
+  // Missed calls show in the inbox as unread, like GoHighLevel.
+  if (contactId) await bumpConversation(contactId, "Missed call", "call", true);
 
   if (!skipped && from) {
     const sent = await sendSms({ client, to: from, body: missedCallText(client, now), kind: "missed_call", contactId });

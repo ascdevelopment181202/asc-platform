@@ -12,6 +12,11 @@ export type Contact = {
   name: string | null;
   opted_out_at: string | null;
   last_review_request_at: string | null;
+  last_message_at: string | null;
+  last_message_preview: string | null;
+  last_message_direction: "inbound" | "outbound" | "call" | null;
+  unread_count: number;
+  starred: boolean;
 };
 
 export type Job = {
@@ -26,7 +31,10 @@ export type Job = {
   cancelled_reason: string | null;
 };
 
-export type SmsKind = "missed_call" | "review" | "owner_forward" | "owner_confirm" | "test";
+export type SmsKind = "missed_call" | "review" | "owner_forward" | "owner_confirm" | "test" | "manual";
+
+/** Texts that belong in the customer conversation (the rest are system texts to the owner). */
+const CONVERSATION_KINDS: SmsKind[] = ["missed_call", "review", "manual"];
 
 const HOUR = 3600_000;
 const DAY = 24 * HOUR;
@@ -132,6 +140,10 @@ export async function sendSms(p: { client: Client; to: string; body: string; kin
     if (!p.client.twilio_number) throw new Error("No Twilio number set for this client");
     const sent = await twilioSend(p.client.twilio_number, p.to, p.body);
     if (log) await db().from("sms_log").update({ twilio_message_sid: sent.sid, status: sent.status }).eq("id", log.id);
+    if (p.contactId && CONVERSATION_KINDS.includes(p.kind)) {
+      if (p.kind === "missed_call") await bumpConversation(p.contactId, "Missed call · auto-text sent", "call", false);
+      else await bumpConversation(p.contactId, p.body, "outbound", false);
+    }
     return { ok: true as const, logId: log?.id ?? null };
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
@@ -139,6 +151,12 @@ export async function sendSms(p: { client: Client; to: string; body: string; kin
     if (log) await db().from("sms_log").update({ status: "failed", error }).eq("id", log.id);
     return { ok: false as const, logId: log?.id ?? null, error };
   }
+}
+
+/** Moves the customer's conversation to the top of the inbox. Inbound activity counts as unread. */
+export async function bumpConversation(contactId: string, preview: string, direction: "inbound" | "outbound" | "call", unread: boolean) {
+  const { error } = await db().rpc("bump_conversation", { p_contact: contactId, p_preview: preview, p_direction: direction, p_unread: unread });
+  if (error) console.error("bump_conversation failed", contactId, error.message);
 }
 
 /** Stops any review texts still waiting for this customer (they replied, clicked or opted out). */
@@ -206,6 +224,9 @@ export function parseCustomerList(text: string): { name: string | null; phone: s
   }
   return rows;
 }
+
+/** Link to one conversation in the client's app (used in the "new reply" text to the owner). */
+export const threadLink = (c: Pick<Client, "dashboard_token">, contactId: string) => `${env.appUrl}/m/${c.dashboard_token}/c/${contactId}`;
 
 export async function clientByTwilioNumber(number: string | undefined) {
   if (!number) return null;

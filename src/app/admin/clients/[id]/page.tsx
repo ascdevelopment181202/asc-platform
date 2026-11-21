@@ -362,6 +362,9 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
                 ))}
               </details>
               <label className="flex items-center gap-2">
+                <input type="checkbox" name="forward_replies" defaultChecked={c.forward_replies} /> Also text new customer messages to the owner&apos;s phone
+              </label>
+              <label className="flex items-center gap-2">
                 <input type="checkbox" name="sms_enabled" defaultChecked={c.sms_enabled} /> Texts switched on
               </label>
               <button className={`${btn} w-full`}>Save</button>

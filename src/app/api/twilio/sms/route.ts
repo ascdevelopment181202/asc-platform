@@ -1,7 +1,7 @@
 import { db, type Client } from "@/lib/supabase";
 import { isFromTwilio, readTwilioForm, twiml } from "@/lib/twilio";
 import { displayUk, normalizeUk } from "@/lib/phone";
-import { cancelPendingReviews, clientByTwilioNumber, createJob, sendSms, upsertContact } from "@/lib/sms";
+import { bumpConversation, cancelPendingReviews, clientByTwilioNumber, createJob, sendSms, threadLink, upsertContact } from "@/lib/sms";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -49,12 +49,13 @@ export async function POST(request: Request) {
     .single<{ id: string }>();
   if (!reply) return twiml(); // Twilio retry of a message we already have
 
+  await bumpConversation(contact.id, body || "(no text)", "inbound", true);
   // Any reply stops the remaining review reminders; the owner takes it from here.
   await cancelPendingReviews(contact.id, "replied");
 
-  if (client.owner_mobile) {
+  if (client.owner_mobile && client.forward_replies) {
     const who = contact.name ? `${contact.name} (${displayUk(from)})` : displayUk(from);
-    const text = `New reply from ${who}: "${body.slice(0, 280)}" Call or text them back from your phone.`;
+    const text = `New message from ${who}: "${body.slice(0, 240)}" Reply here: ${threadLink(client, contact.id)}`;
     const sent = await sendSms({ client, to: normalizeUk(client.owner_mobile)!, body: text, kind: "owner_forward", contactId: contact.id });
     if (sent.ok) await db().from("replies").update({ forwarded: true }).eq("id", reply.id);
   }
