@@ -30,3 +30,16 @@ export function fullWhen(iso: string, tz: string, locale = "en-GB") {
 }
 
 export const daysAgoIso = (days: number) => new Date(Date.now() - days * 86400_000).toISOString();
+
+/** For server actions: the client from the hidden token field, or throw. */
+export async function clientFromForm(formData: FormData) {
+  const c = await loadClient(String(formData.get("token") ?? ""));
+  if (!c) throw new Error("Invalid link");
+  return c;
+}
+
+export async function loadContact(clientId: string, contactId: string) {
+  if (!/^[0-9a-f-]{36}$/.test(contactId)) return null;
+  const { data } = await db().from("contacts").select("*").eq("id", contactId).eq("client_id", clientId).maybeSingle<import("@/lib/sms").Contact>();
+  return data;
+}

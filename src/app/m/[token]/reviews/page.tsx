@@ -39,7 +39,7 @@ export default async function Reviews({ params, searchParams }: { params: Promis
   const ready = c.sms_enabled && !!c.twilio_number;
 
   return (
-    <AppShell token={token} active="reviews" unread={unread} title="Reviews">
+    <AppShell token={token} active="more" unread={unread} title="Reviews">
       <Flash ok={sp.ok} err={sp.err} />
       <div className="space-y-4 p-4">
         {!ready && <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">Texts aren&apos;t switched on yet. ASC will let you know when everything is live.</p>}

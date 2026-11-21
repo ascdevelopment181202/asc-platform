@@ -53,6 +53,27 @@ export type Client = {
   country: "GB" | "US";
   mobile_carrier: string | null;
   messaging_service_sid: string | null;
+  // Client app settings
+  booking_token: string;
+  booking_enabled: boolean;
+  booking_slot_minutes: number;
+  booking_notice_hours: number;
+  booking_days_ahead: number;
+  invoice_details: InvoiceDetails;
+};
+
+/** What goes on a client's quotes and invoices, and how their customers pay. */
+export type InvoiceDetails = {
+  businessAddress?: string;
+  vatNumber?: string;
+  defaultVatPercent?: number;
+  paymentLink?: string; // their own Stripe/SumUp/PayPal link
+  bankName?: string;
+  accountName?: string;
+  sortCode?: string; // UK
+  accountNumber?: string;
+  routingNumber?: string; // US
+  paymentTerms?: string;
 };
 
 export type Task = {
