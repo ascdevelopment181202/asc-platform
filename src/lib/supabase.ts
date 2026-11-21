@@ -49,6 +49,7 @@ export type Client = {
   timezone: string;
   business_hours: { start: string; end: string; days: number[] };
   last_forwarded_call_at: string | null;
+  forward_replies: boolean;
 };
 
 export type Task = {

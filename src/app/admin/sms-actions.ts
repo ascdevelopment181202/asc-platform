@@ -33,6 +33,7 @@ export async function saveSmsSettings(formData: FormData) {
       owner_mobile: owner,
       google_review_url: reviewUrl,
       sms_enabled: enabled,
+      forward_replies: formData.get("forward_replies") === "on",
       missed_call_template: text(formData, "missed_call_template"),
       missed_call_after_hours_template: text(formData, "missed_call_after_hours_template"),
       review_template: text(formData, "review_template"),

@@ -11,13 +11,13 @@ export async function GET(_request: Request, { params }: { params: Promise<{ tok
   if (!c) return new Response("Not found", { status: 404 });
   return Response.json(
     {
-      name: `${clientLabel(c)} · Calls & reviews`,
-      short_name: "Calls & reviews",
+      name: `${clientLabel(c)} · Inbox`,
+      short_name: "Inbox",
       start_url: `/m/${token}`,
       scope: `/m/${token}`,
       display: "standalone",
-      background_color: "#f6f6f4",
-      theme_color: "#2a78d6",
+      background_color: "#f4f5f7",
+      theme_color: "#ffffff",
       icons: [
         { src: "/api/app-icon?s=192", sizes: "192x192", type: "image/png" },
         { src: "/api/app-icon?s=512", sizes: "512x512", type: "image/png", purpose: "any maskable" },
