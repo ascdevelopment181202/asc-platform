@@ -6,6 +6,8 @@ import type { Contact } from "@/lib/sms";
 import { daysAgoIso, loadClient, shortWhen, unreadTotal } from "./data";
 import { AppShell, Avatar, Flash } from "./ui";
 import { AutoRefresh } from "./auto-refresh";
+import { NotificationsToggle } from "./notifications";
+import { vapidPublicKey } from "@/lib/push";
 
 export const dynamic = "force-dynamic";
 
@@ -39,9 +41,10 @@ export default async function Inbox({ params, searchParams }: Props) {
     const safe = q.replace(/[%,()]/g, "");
     query = digits.length >= 3 ? query.or(`name.ilike.%${safe}%,phone.ilike.%${digits}%`) : query.ilike("name", `%${safe}%`);
   }
-  const [{ data: rows }, unread] = await Promise.all([
+  const [{ data: rows }, unread, publicKey] = await Promise.all([
     query.order("last_message_at", { ascending: false }).limit(100).returns<Contact[]>(),
     unreadTotal(c.id),
+    vapidPublicKey(),
   ]);
   const contacts = rows ?? [];
 
@@ -63,6 +66,7 @@ export default async function Inbox({ params, searchParams }: Props) {
     >
       <AutoRefresh seconds={10} />
       <Flash ok={sp.ok} err={sp.err} />
+      <NotificationsToggle token={token} publicKey={publicKey} compact />
 
       <div className="sticky top-[61px] z-10 space-y-2 bg-[#f4f5f7] px-4 pb-2 pt-3">
         <form action={`/m/${token}`} className="relative">

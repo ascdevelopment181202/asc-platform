@@ -4,6 +4,8 @@ import { env } from "@/lib/env";
 import { clientLabel } from "@/lib/clients";
 import { loadClient, unreadTotal } from "../data";
 import { AppShell } from "../ui";
+import { NotificationsToggle } from "../notifications";
+import { vapidPublicKey } from "@/lib/push";
 
 export const dynamic = "force-dynamic";
 
@@ -16,12 +18,13 @@ export default async function Stats({ params }: { params: Promise<{ token: strin
   const now = new Date();
   const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
   const head = { count: "exact" as const, head: true };
-  const [caught, replies, asked, clicked, unread] = await Promise.all([
+  const [caught, replies, asked, clicked, unread, publicKey] = await Promise.all([
     db().from("calls").select("id", head).eq("client_id", c.id).eq("text_sent", true).gte("created_at", monthStart),
     db().from("replies").select("id", head).eq("client_id", c.id).gte("created_at", monthStart),
     db().from("jobs").select("id", head).eq("client_id", c.id).gte("created_at", monthStart),
     db().from("jobs").select("id", head).eq("client_id", c.id).gte("created_at", monthStart).not("review_clicked_at", "is", null),
     unreadTotal(c.id),
+    vapidPublicKey(),
   ]);
   const monthName = now.toLocaleDateString("en-GB", { month: "long", timeZone: tz });
 
@@ -38,10 +41,12 @@ export default async function Stats({ params }: { params: Promise<{ token: strin
           </div>
         </section>
 
+        <NotificationsToggle token={token} publicKey={publicKey} />
+
         <details className="rounded-2xl bg-white p-4 shadow-sm" open>
           <summary className="cursor-pointer font-semibold">Put this app on your home screen</summary>
           <ul className="mt-2 space-y-1.5 text-sm text-neutral-700">
-            <li><strong>iPhone:</strong> open this page in Safari, tap the Share button, then &ldquo;Add to Home Screen&rdquo;.</li>
+            <li><strong>iPhone:</strong> open this page in Safari, tap the Share button, then &ldquo;Add to Home Screen&rdquo;. Open the app from the new icon, then turn on notifications above.</li>
             <li><strong>Android:</strong> open in Chrome, tap the three dots, then &ldquo;Add to Home screen&rdquo; or &ldquo;Install app&rdquo;.</li>
           </ul>
         </details>
