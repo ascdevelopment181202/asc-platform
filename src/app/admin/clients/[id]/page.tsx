@@ -15,7 +15,7 @@ import { seoAiEnabled } from "@/lib/seo-ai";
 import type { Site } from "@/lib/sites";
 import { env } from "@/lib/env";
 import { btn, btnQuiet, Countdown, fmt, input, StatusPill } from "../../ui";
-import { saveSmsSettings, sendTestText } from "../../sms-actions";
+import { resendPhoneWelcome, saveSmsSettings, sendTestText, setUpPhone } from "../../sms-actions";
 import { DEFAULT_TEMPLATES, TEMPLATE_HELP } from "@/lib/sms";
 import { displayUk } from "@/lib/phone";
 
@@ -327,6 +327,20 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
                 </p>
               )}
             </div>
+            {!c.twilio_number ? (
+              <form action={setUpPhone} className="mb-3 rounded-lg bg-blue-50 p-3 text-sm">
+                <input type="hidden" name="clientId" value={c.id} />
+                <p className="mb-2">
+                  One click: buys a UK mobile number (about £1.89/month), points it at the app, switches texts on, and texts and emails {c.owner_mobile ? displayUk(c.owner_mobile) : "the owner"} their app link and forwarding codes.
+                </p>
+                <button className={`${btn} w-full`} disabled={!c.owner_mobile}>{c.owner_mobile ? "Set up phone" : "Needs the owner's mobile first"}</button>
+              </form>
+            ) : (
+              <form action={resendPhoneWelcome} className="mb-3">
+                <input type="hidden" name="clientId" value={c.id} />
+                <button className={`${btnQuiet} w-full`}>Resend app link and forwarding codes</button>
+              </form>
+            )}
             <form action={saveSmsSettings} className="space-y-2 text-sm">
               <input type="hidden" name="clientId" value={c.id} />
               <label className="block">Twilio number<input name="twilio_number" defaultValue={c.twilio_number ?? ""} placeholder="+447..." className={`${input} mt-1 w-full`} /></label>

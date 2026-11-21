@@ -142,3 +142,40 @@ Need a change? Just reply to this email and we'll get it done within 2 working d
 ${signoff()}`,
   };
 }
+
+/** Sent when a client's business texting number is set up: app link, install steps and forwarding codes. */
+export function phoneWelcomeEmail(p: { firstName: string; appUrl: string; twilioNumber: string; forwardingOn: string | null }) {
+  const n = p.twilioNumber;
+  return {
+    subject: "Your missed-call texts and inbox app are ready",
+    text: `Hi ${p.firstName},
+
+Your missed-call texts and review requests are set up. Two quick steps and you're live.
+
+1. SWITCH ON MISSED-CALL TEXTS
+${p.forwardingOn ? `On the phone customers call you on (${p.forwardingOn}), dial` : "On your phone, dial"} each of these and press call:
+
+**61*${n}*11*20#   (calls you don't answer within 20 seconds)
+**67*${n}#   (when you're busy on another call)
+**62*${n}#   (when your phone is off or has no signal)
+
+You'll see a message saying it's switched on. Your phone still rings as normal. Only calls you miss go to us, and we text the caller straight back.
+
+To switch it all off at any point, dial ##002#
+
+2. PUT YOUR INBOX APP ON YOUR HOME SCREEN
+Your app: ${p.appUrl}
+
+iPhone: open the link in Safari, tap the Share button, then "Add to Home Screen". Open it from the new icon and tap "Turn on" for notifications.
+Android: open the link in Chrome, tap the three dots, then "Add to Home screen" or "Install app", then tap "Turn on" for notifications.
+
+Keep this link to yourself. It opens your inbox without a password.
+
+WHAT YOU'LL USE IT FOR
+- Inbox: missed calls and customer texts. Tap one to reply or call back.
+- Reviews: after each job tap "Job done", or text DONE 07700900123 Sarah to ${n}. We'll ask them for a Google review.
+- Results: your numbers for the month.
+
+${signoff()}`,
+  };
+}
