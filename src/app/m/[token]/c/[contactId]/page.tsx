@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/supabase";
-import { displayUk } from "@/lib/phone";
+import { displayPhone, localeFor } from "@/lib/phone";
 import type { Contact } from "@/lib/sms";
 import { fullWhen, loadClient } from "../../data";
 import { Avatar } from "../../ui";
@@ -59,8 +59,9 @@ export default async function Thread({ params, searchParams }: Props) {
   const newFrom = contact.unread_count > 0 ? inboundIdx[Math.max(0, inboundIdx.length - contact.unread_count)] : -1;
   if (contact.unread_count > 0) await db().from("contacts").update({ unread_count: 0 }).eq("id", contact.id);
 
-  const day = (iso: string) => new Date(iso).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", timeZone: tz });
-  const time = (iso: string) => new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: tz });
+  const locale = localeFor(c.country);
+  const day = (iso: string) => new Date(iso).toLocaleDateString(locale, { weekday: "long", day: "numeric", month: "long", timeZone: tz });
+  const time = (iso: string) => new Date(iso).toLocaleTimeString(locale, { hour: "numeric", minute: "2-digit", timeZone: tz });
 
   return (
     <div className="flex min-h-dvh flex-col">
@@ -75,8 +76,8 @@ export default async function Thread({ params, searchParams }: Props) {
           </Link>
           <Avatar name={contact.name} phone={contact.phone} />
           <div className="min-w-0 flex-1">
-            <p className="truncate font-semibold leading-tight">{contact.name ?? displayUk(contact.phone)}</p>
-            <p className="truncate text-xs text-neutral-500">{contact.name ? displayUk(contact.phone) : "Customer"}{contact.opted_out_at ? " · opted out" : ""}</p>
+            <p className="truncate font-semibold leading-tight">{contact.name ?? displayPhone(contact.phone)}</p>
+            <p className="truncate text-xs text-neutral-500">{contact.name ? displayPhone(contact.phone) : "Customer"}{contact.opted_out_at ? " · opted out" : ""}</p>
           </div>
           <form action={toggleStar}>
             <input type="hidden" name="token" value={token} />
@@ -125,12 +126,12 @@ export default async function Thread({ params, searchParams }: Props) {
                 </div>
               )}
               {it.kind === "call" && (
-                <p className="mx-auto w-fit rounded-full bg-red-50 px-3 py-1 text-xs font-medium text-red-700" title={fullWhen(it.at, tz)}>
+                <p className="mx-auto w-fit rounded-full bg-red-50 px-3 py-1 text-xs font-medium text-red-700" title={fullWhen(it.at, tz, locale)}>
                   ✆ Missed call · {time(it.at)}{it.note ? ` · ${it.note}` : ""}
                 </p>
               )}
               {it.kind === "event" && (
-                <p className="mx-auto w-fit rounded-full bg-neutral-200/70 px-3 py-1 text-xs text-neutral-600" title={fullWhen(it.at, tz)}>
+                <p className="mx-auto w-fit rounded-full bg-neutral-200/70 px-3 py-1 text-xs text-neutral-600" title={fullWhen(it.at, tz, locale)}>
                   ★ {it.note} · {time(it.at)}
                 </p>
               )}

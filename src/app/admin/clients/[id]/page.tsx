@@ -17,7 +17,8 @@ import { env } from "@/lib/env";
 import { btn, btnQuiet, Countdown, fmt, input, StatusPill } from "../../ui";
 import { resendPhoneWelcome, saveSmsSettings, sendTestText, setUpPhone } from "../../sms-actions";
 import { DEFAULT_TEMPLATES, TEMPLATE_HELP } from "@/lib/sms";
-import { displayUk } from "@/lib/phone";
+import { displayUk, forwardingCodes } from "@/lib/phone";
+import { a2pStatus } from "@/lib/twilio";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -55,6 +56,7 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
   ]);
   type SmsRow = { id: string; created_at: string; to_number: string; kind: string; status: string; error: string | null };
   const { data: smsLog } = await supabase.from("sms_log").select("id, created_at, to_number, kind, status, error").eq("client_id", id).order("created_at", { ascending: false }).limit(8).returns<SmsRow[]>();
+  const a2p = c.country === "US" && c.messaging_service_sid ? await a2pStatus(c.messaging_service_sid) : null;
   const previewUrl = site ? `${env.appUrl}/s/${site.slug}` : null;
   const seoTotal = site ? allPaths(site.content).length - 1 : 0;
   const { count: seoWritten } = site
@@ -321,9 +323,25 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
               <p className="break-all text-xs text-neutral-600">
                 Client app: <a className="underline" href={`${env.appUrl}/m/${c.dashboard_token}`}>{`${env.appUrl}/m/${c.dashboard_token}`}</a>
               </p>
-              {c.twilio_number && (
-                <p className="text-xs text-neutral-600">
-                  Forwarding codes for their phone: <code>**61*{c.twilio_number}*11*20#</code> (no answer), <code>**67*{c.twilio_number}#</code> (busy), <code>**62*{c.twilio_number}#</code> (unreachable)
+              {c.twilio_number &&
+                forwardingCodes(c.country === "US" ? "US" : "GB", c.twilio_number, c.mobile_carrier).map((g) => (
+                  <div key={g.carrier} className="text-xs text-neutral-600">
+                    <p className="font-medium">Forwarding codes ({g.carrier}):</p>
+                    {g.steps.map((st) => (
+                      <p key={st.code}>
+                        <code>{st.code}</code> {st.label.toLowerCase()}
+                      </p>
+                    ))}
+                    <p>
+                      Off: <code>{g.off}</code>
+                    </p>
+                  </div>
+                ))}
+              {a2p && (
+                <p className={`rounded p-2 text-xs ${a2p === "verified" ? "bg-green-50 text-green-800" : "bg-amber-50 text-amber-900"}`}>
+                  US texting registration (A2P 10DLC): <strong>{a2p}</strong>.
+                  {a2p !== "verified" && " Texts won't send until it's verified. In Twilio: Messaging, then Regulatory Compliance, then A2P 10DLC: register their brand, then a campaign linked to Messaging Service "}
+                  {a2p !== "verified" && <code>{c.messaging_service_sid}</code>}
                 </p>
               )}
             </div>
@@ -331,7 +349,7 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
               <form action={setUpPhone} className="mb-3 rounded-lg bg-blue-50 p-3 text-sm">
                 <input type="hidden" name="clientId" value={c.id} />
                 <p className="mb-2">
-                  One click: buys a UK mobile number (about £1.89/month), points it at the app, switches texts on, and texts and emails {c.owner_mobile ? displayUk(c.owner_mobile) : "the owner"} their app link and forwarding codes.
+                  One click: buys a {c.country === "US" ? "US local number near them (about $1.15/month) with its own Messaging Service" : "UK mobile number (about £1.89/month)"}, points it at the app, switches texts on, and texts and emails {c.owner_mobile ? displayUk(c.owner_mobile) : "the owner"} their app link and forwarding codes.
                 </p>
                 <button className={`${btn} w-full`} disabled={!c.owner_mobile}>{c.owner_mobile ? "Set up phone" : "Needs the owner's mobile first"}</button>
               </form>
@@ -343,8 +361,47 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
             )}
             <form action={saveSmsSettings} className="space-y-2 text-sm">
               <input type="hidden" name="clientId" value={c.id} />
-              <label className="block">Twilio number<input name="twilio_number" defaultValue={c.twilio_number ?? ""} placeholder="+447..." className={`${input} mt-1 w-full`} /></label>
-              <label className="block">Owner&apos;s mobile (gets replies, sends DONE)<input name="owner_mobile" defaultValue={c.owner_mobile ?? ""} placeholder="07..." className={`${input} mt-1 w-full`} /></label>
+              <div className="grid grid-cols-2 gap-2">
+                <label className="block">
+                  Country
+                  <select name="country" defaultValue={c.country} className={`${input} mt-1 w-full`}>
+                    <option value="GB">UK</option>
+                    <option value="US">US</option>
+                  </select>
+                </label>
+                <label className="block">
+                  Time zone
+                  <select name="timezone" defaultValue={c.timezone} className={`${input} mt-1 w-full`}>
+                    <option value="Europe/London">UK</option>
+                    <option value="America/New_York">US Eastern</option>
+                    <option value="America/Chicago">US Central (Dallas)</option>
+                    <option value="America/Denver">US Mountain</option>
+                    <option value="America/Phoenix">US Arizona</option>
+                    <option value="America/Los_Angeles">US Pacific</option>
+                  </select>
+                </label>
+              </div>
+              {c.country === "US" && (
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="block">
+                    Their carrier
+                    <select name="mobile_carrier" defaultValue={c.mobile_carrier ?? ""} className={`${input} mt-1 w-full`}>
+                      <option value="">Not sure</option>
+                      <option>Verizon</option>
+                      <option>AT&T</option>
+                      <option>T-Mobile</option>
+                      <option>Other</option>
+                    </select>
+                  </label>
+                  <label className="block">
+                    Messaging Service SID
+                    <input name="messaging_service_sid" defaultValue={c.messaging_service_sid ?? ""} placeholder="MG..." className={`${input} mt-1 w-full`} />
+                  </label>
+                </div>
+              )}
+              {c.country !== "US" && <input type="hidden" name="messaging_service_sid" value="" />}
+              <label className="block">Twilio number<input name="twilio_number" defaultValue={c.twilio_number ?? ""} placeholder={c.country === "US" ? "+1..." : "+447..."} className={`${input} mt-1 w-full`} /></label>
+              <label className="block">Owner&apos;s mobile (gets replies, sends DONE)<input name="owner_mobile" defaultValue={c.owner_mobile ?? ""} placeholder={c.country === "US" ? "(214) 555-0123" : "07..."} className={`${input} mt-1 w-full`} /></label>
               <label className="block">Google review link<input name="google_review_url" defaultValue={c.google_review_url ?? ""} placeholder="https://search.google.com/local/writereview?placeid=..." className={`${input} mt-1 w-full`} /></label>
               <fieldset className="flex flex-wrap items-center gap-2">
                 <legend className="mb-1">Opening hours (picks the missed-call text)</legend>

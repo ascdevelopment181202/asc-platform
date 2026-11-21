@@ -5,8 +5,8 @@ import { db, type Client } from "@/lib/supabase";
 import { clientLabel, createTask, once } from "@/lib/clients";
 import { formReceivedEmail, notifyAdmin, sendEmail } from "@/lib/email";
 import { firstNameOf } from "@/lib/onboarding";
-import { describeHours, FIELD_LABELS, MAX_FILE_MB, MAX_PHOTOS, onboardingSchema, type OnboardingInput } from "@/lib/onboarding-fields";
-import { isUkMobile, normalizeUk } from "@/lib/phone";
+import { describeHours, US_TIMEZONES, FIELD_LABELS, MAX_FILE_MB, MAX_PHOTOS, onboardingSchema, type OnboardingInput } from "@/lib/onboarding-fields";
+import { isTextable, normalizePhone } from "@/lib/phone";
 
 const BUILD_HOURS = 48;
 const ALLOWED = /\.(jpe?g|png|webp|heic|heif|gif|svg|pdf|ai|eps)$/i;
@@ -69,7 +69,9 @@ export async function submitOnboarding(token: string, input: OnboardingInput): P
 
   const { logoPath, photoPaths, ...answers } = data;
   answers.hours = answers.hours || describeHours(answers.hoursDays, answers.hoursStart, answers.hoursEnd);
-  const ownerMobile = normalizeUk(answers.mobile);
+  const country = answers.country === "US" ? "US" : "GB";
+  const ownerMobile = normalizePhone(answers.mobile, country);
+  const timezone = country === "US" && answers.usTimezone ? US_TIMEZONES[answers.usTimezone] : "Europe/London";
   // Only a link that opens Google's "write a review" box is used for review texts; anything else waits for you to check.
   const reviewUrl = /^https:\/\/(g\.page\/r\/|search\.google\.com\/local\/writereview)/.test(answers.reviewsLink) ? answers.reviewsLink : null;
   const now = new Date();
@@ -95,7 +97,10 @@ export async function submitOnboarding(token: string, input: OnboardingInput): P
       first_name: client.first_name || answers.contactName.split(" ")[0],
       phone: client.phone || answers.mobile,
       // Missed call text back + reviews: set up the parts the form gives us. The Twilio number is added in admin.
-      owner_mobile: client.owner_mobile || (isUkMobile(ownerMobile) ? ownerMobile : null),
+      country,
+      timezone,
+      mobile_carrier: country === "US" ? answers.carrier || null : null,
+      owner_mobile: client.owner_mobile || (isTextable(ownerMobile, country) ? ownerMobile : null),
       business_hours: { start: answers.hoursStart, end: answers.hoursEnd, days: answers.hoursDays },
       google_review_url: client.google_review_url || reviewUrl,
     })
@@ -122,6 +127,7 @@ export async function submitOnboarding(token: string, input: OnboardingInput): P
           .map(([k, v]) => `${FIELD_LABELS[k] ?? k}: ${v === true ? "Yes" : v}`),
         "",
         `Logo: ${logoPath ? "uploaded" : "none"}  |  Photos: ${photoPaths.length}${photoPaths.length ? "" : " (use photos from their website or Google)"}`,
+        ...(country === "US" ? [`US client: after "Set up phone", register their A2P 10DLC brand and campaign in Twilio (legal name ${answers.legalName}${answers.ein ? `, EIN ${answers.ein}` : ", sole proprietor"}). Texts send once it's verified.`] : []),
         `Phone: click "Set up phone" on their admin page to buy their number and send their app link.${answers.customersCallMobile === "No" ? ` Customers call ${answers.customersCallNumber}, so forwarding goes on that line.` : ""}`,
         `Dashboard: ${env.appUrl}/admin/clients/${client.id}`,
       ]),

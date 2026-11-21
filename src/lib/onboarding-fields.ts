@@ -6,6 +6,10 @@ export const TRADES = ["Plumbing", "Heating", "Plumbing and heating", "Electrica
 export const VISIT_OPTIONS = ["We go to them", "They come to us", "Both"] as const;
 export const LEAD_DELIVERY = ["SMS", "Email", "Both"] as const;
 
+export const COUNTRIES = ["UK", "US"] as const;
+export const US_TIMEZONES = { Eastern: "America/New_York", Central: "America/Chicago", Mountain: "America/Denver", Arizona: "America/Phoenix", Pacific: "America/Los_Angeles" } as const;
+export const US_CARRIERS = ["Verizon", "AT&T", "T-Mobile", "Other"] as const;
+
 export const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
 
 export const MAX_PHOTOS = 40;
@@ -20,6 +24,11 @@ const time = z.string().regex(/^\d{2}:\d{2}$/, "Choose a time");
 export const onboardingSchema = z
   .object({
     // ---- Essentials (required) ----
+    country: z.enum(COUNTRIES).default("UK"),
+    usTimezone: optionalChoice(Object.keys(US_TIMEZONES) as [keyof typeof US_TIMEZONES, ...(keyof typeof US_TIMEZONES)[]]),
+    carrier: optionalChoice(US_CARRIERS),
+    legalName: optional, // US: needed to register their business for texting (A2P 10DLC)
+    ein: optional, // US: EIN if they have one; sole proprietors leave blank
     businessName: text("Business name"),
     contactName: text("Your name"),
     mobile: text("Mobile number"),
@@ -65,6 +74,11 @@ export const onboardingSchema = z
     if (v.customersCallMobile === "No" && !v.customersCallNumber) {
       ctx.addIssue({ code: "custom", path: ["customersCallNumber"], message: "Which number do customers call?" });
     }
+    if (v.country === "US") {
+      if (!v.usTimezone) ctx.addIssue({ code: "custom", path: ["usTimezone"], message: "Choose your time zone" });
+      if (!v.legalName) ctx.addIssue({ code: "custom", path: ["legalName"], message: "We need this to register your texting number" });
+      if (!v.address) ctx.addIssue({ code: "custom", path: ["address"], message: "We need this to register your texting number" });
+    }
     if (v.hoursStart >= v.hoursEnd) {
       ctx.addIssue({ code: "custom", path: ["hoursEnd"], message: "Closing time must be after opening time" });
     }
@@ -90,6 +104,11 @@ export type OnboardingData = z.output<typeof onboardingSchema>;
 
 /** Human labels, used for the admin view and the notification email. */
 export const FIELD_LABELS: Record<string, string> = {
+  country: "Country",
+  usTimezone: "Time zone",
+  carrier: "Cell carrier",
+  legalName: "Legal business name",
+  ein: "EIN",
   businessName: "Business name",
   contactName: "Contact name",
   mobile: "Mobile",

@@ -2,8 +2,8 @@ import { after } from "next/server";
 import { db, type Client } from "@/lib/supabase";
 import { notifyClient } from "@/lib/push";
 import { isFromTwilio, readTwilioForm, twiml } from "@/lib/twilio";
-import { displayUk, normalizeUk } from "@/lib/phone";
-import { bumpConversation, cancelPendingReviews, clientByTwilioNumber, createJob, sendSms, threadLink, upsertContact } from "@/lib/sms";
+import { displayPhone, normalizePhone } from "@/lib/phone";
+import { bumpConversation, clientTime, countryOf, cancelPendingReviews, clientByTwilioNumber, createJob, sendSms, threadLink, upsertContact } from "@/lib/sms";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -22,11 +22,12 @@ export async function POST(request: Request) {
   const client = await clientByTwilioNumber(params.To);
   if (!client) return twiml();
 
-  const from = normalizeUk(params.From);
+  const country = countryOf(client);
+  const from = normalizePhone(params.From, country);
   const body = (params.Body ?? "").trim();
   if (!from) return twiml();
 
-  if (client.owner_mobile && normalizeUk(client.owner_mobile) === from) {
+  if (client.owner_mobile && normalizePhone(client.owner_mobile, country) === from) {
     await handleOwnerCommand(client, from, body);
     return twiml();
   }
@@ -54,7 +55,7 @@ export async function POST(request: Request) {
   await bumpConversation(contact.id, body || "(no text)", "inbound", true);
   after(() =>
     notifyClient(client.id, {
-      title: contact.name ?? displayUk(from),
+      title: contact.name ?? displayPhone(from),
       body: body || "Sent a message",
       url: `/m/${client.dashboard_token}/c/${contact.id}`,
       tag: contact.id,
@@ -64,21 +65,21 @@ export async function POST(request: Request) {
   await cancelPendingReviews(contact.id, "replied");
 
   if (client.owner_mobile && client.forward_replies) {
-    const who = contact.name ? `${contact.name} (${displayUk(from)})` : displayUk(from);
+    const who = contact.name ? `${contact.name} (${displayPhone(from)})` : displayPhone(from);
     const text = `New message from ${who}: "${body.slice(0, 240)}" Reply here: ${threadLink(client, contact.id)}`;
-    const sent = await sendSms({ client, to: normalizeUk(client.owner_mobile)!, body: text, kind: "owner_forward", contactId: contact.id });
+    const sent = await sendSms({ client, to: normalizePhone(client.owner_mobile, country)!, body: text, kind: "owner_forward", contactId: contact.id });
     if (sent.ok) await db().from("replies").update({ forwarded: true }).eq("id", reply.id);
   }
   return twiml();
 }
 
-const HELP = 'To ask a customer for a review, text: DONE 07700900123 Sarah';
+const helpFor = (c: Client) => `To ask a customer for a review, text: DONE ${c.country === "US" ? "2145550123" : "07700900123"} Sarah`;
 
 async function handleOwnerCommand(client: Client, ownerMobile: string, body: string) {
   const reply = (text: string) => sendSms({ client, to: ownerMobile, body: text, kind: "owner_confirm" });
   const match = body.match(/^\s*done\b[\s:,-]*(.*)$/i);
   if (!match) {
-    await reply(`Hi! ${HELP}`);
+    await reply(`Hi! ${helpFor(client)}`);
     return;
   }
 
@@ -86,7 +87,7 @@ async function handleOwnerCommand(client: Client, ownerMobile: string, body: str
   const rest = match[1];
   const numberMatch = rest.match(/(\+?\d[\d\s()-]{8,}\d)/);
   if (!numberMatch) {
-    await reply(`Couldn't find a mobile number in that. ${HELP}`);
+    await reply(`Couldn't find a mobile number in that. ${helpFor(client)}`);
     return;
   }
   const name = rest.replace(numberMatch[0], "").replace(/[,;:-]/g, " ").trim() || null;
@@ -95,6 +96,6 @@ async function handleOwnerCommand(client: Client, ownerMobile: string, body: str
     await reply(`Not sent: ${result.error}`);
     return;
   }
-  const when = result.firstSendAt.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: client.timezone || "Europe/London" });
-  await reply(`Got it. Review request goes to ${result.contact.name ?? displayUk(result.contact.phone)} at about ${when} (texts only go out 9am to 7pm).`);
+  const when = clientTime(client, result.firstSendAt);
+  await reply(`Got it. Review request goes to ${result.contact.name ?? displayPhone(result.contact.phone)} at about ${when} (texts only go out between 9am and 7pm).`);
 }

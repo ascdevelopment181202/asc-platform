@@ -1,10 +1,9 @@
 import { after } from "next/server";
 import { db } from "@/lib/supabase";
 import { notifyClient } from "@/lib/push";
-import { displayUk } from "@/lib/phone";
+import { displayPhone, isTextable, normalizePhone, countryCode } from "@/lib/phone";
 import { isFromTwilio, readTwilioForm, sayAndHangUp, twiml } from "@/lib/twilio";
-import { isUkMobile, normalizeUk } from "@/lib/phone";
-import { bumpConversation, clientByTwilioNumber, missedCallText, REPEAT_CALLER_MS, sendSms, upsertContact } from "@/lib/sms";
+import { bumpConversation, countryOf, clientByTwilioNumber, missedCallText, REPEAT_CALLER_MS, sendSms, upsertContact } from "@/lib/sms";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -20,15 +19,16 @@ export async function POST(request: Request) {
   const client = await clientByTwilioNumber(params.To);
   if (!client) return sayAndHangUp("Sorry, this number is not in service.");
 
-  const from = normalizeUk(params.From);
+  const country = countryOf(client);
+  const from = normalizePhone(params.From, country);
   const now = new Date();
   await db().from("clients").update({ last_forwarded_call_at: now.toISOString() }).eq("id", client.id);
 
   let skipped: string | null = null;
   let contactId: string | null = null;
   if (!from) skipped = "withheld";
-  else if (!from.startsWith("+44")) skipped = "international";
-  else if (!isUkMobile(from)) skipped = "landline";
+  else if (!from.startsWith(countryCode(country))) skipped = "international";
+  else if (!isTextable(from, country)) skipped = "landline";
   else if (!client.sms_enabled) skipped = "sms_disabled";
 
   if (!skipped && from) {
@@ -66,7 +66,7 @@ export async function POST(request: Request) {
 
   // Notify the client's phone after Twilio has its answer, so the caller isn't kept waiting.
   after(async () => {
-    let who = displayUk(from ?? params.From);
+    let who = displayPhone(from ?? params.From);
     if (contactId) {
       const { data } = await db().from("contacts").select("name").eq("id", contactId).maybeSingle<{ name: string | null }>();
       if (data?.name) who = data.name;

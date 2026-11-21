@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/supabase";
-import { displayUk } from "@/lib/phone";
+import { displayPhone, localeFor } from "@/lib/phone";
 import { loadClient, shortWhen, unreadTotal } from "../data";
 import { AppShell, Flash } from "../ui";
 import { bulkUpload, jobDone } from "../actions";
@@ -50,12 +50,12 @@ export default async function Reviews({ params, searchParams }: { params: Promis
           <form action={jobDone} className="mt-3 space-y-2">
             <input type="hidden" name="token" value={token} />
             <input name="name" placeholder="Customer's first name" autoComplete="off" className="w-full rounded-xl border border-neutral-300 px-4 py-3 text-base" />
-            <input name="phone" type="tel" inputMode="tel" placeholder="Their mobile (07...)" required autoComplete="off" className="w-full rounded-xl border border-neutral-300 px-4 py-3 text-base" />
+            <input name="phone" type="tel" inputMode="tel" placeholder={c.country === "US" ? "Their cell number" : "Their mobile (07...)"} required autoComplete="off" className="w-full rounded-xl border border-neutral-300 px-4 py-3 text-base" />
             <button className="w-full rounded-xl bg-[#2a78d6] px-4 py-3.5 text-base font-semibold text-white active:bg-[#1f62b3]">Job done, ask for a review</button>
           </form>
           {c.twilio_number && (
             <p className="mt-3 text-xs text-neutral-500">
-              Or text <strong>DONE 07700900123 Sarah</strong> to {displayUk(c.twilio_number)} from your phone.
+              Or text <strong>DONE {c.country === "US" ? "2145550123" : "07700900123"} Sarah</strong> to {displayPhone(c.twilio_number)} from your phone.
             </p>
           )}
         </section>
@@ -72,8 +72,8 @@ export default async function Reviews({ params, searchParams }: { params: Promis
                   <li key={j.id}>
                     <Link href={`/m/${token}/c/${j.contact_id}`} className="flex items-center justify-between gap-3 px-4 py-3 active:bg-neutral-50">
                       <div className="min-w-0">
-                        <p className="truncate font-medium">{j.contacts?.name ?? displayUk(j.contacts?.phone)}</p>
-                        <p className="text-xs text-neutral-500">{shortWhen(j.created_at, tz)}{j.source === "bulk" ? " · past customer" : ""}</p>
+                        <p className="truncate font-medium">{j.contacts?.name ?? displayPhone(j.contacts?.phone)}</p>
+                        <p className="text-xs text-neutral-500">{shortWhen(j.created_at, tz, localeFor(c.country))}{j.source === "bulk" ? " · past customer" : ""}</p>
                       </div>
                       <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-medium ${s.tone}`}>{s.label}</span>
                     </Link>
@@ -91,7 +91,7 @@ export default async function Reviews({ params, searchParams }: { params: Promis
           </p>
           <form action={bulkUpload} className="mt-3 space-y-2">
             <input type="hidden" name="token" value={token} />
-            <textarea name="list" rows={5} placeholder={"Sarah, 07700 900123\nMike Jones, 07700 900456"} className="w-full rounded-xl border border-neutral-300 px-3 py-2 text-base" />
+            <textarea name="list" rows={5} placeholder={c.country === "US" ? "Sarah, (214) 555-0123\nMike Jones, (214) 555-0145" : "Sarah, 07700 900123\nMike Jones, 07700 900456"} className="w-full rounded-xl border border-neutral-300 px-3 py-2 text-base" />
             <input type="file" name="file" accept=".csv,.txt,text/csv,text/plain" className="block w-full text-sm" />
             <button className="w-full rounded-xl bg-neutral-900 px-4 py-3 text-base font-semibold text-white">Add customers</button>
           </form>

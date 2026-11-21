@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/supabase";
-import { displayUk } from "@/lib/phone";
+import { displayPhone, localeFor } from "@/lib/phone";
 import type { Contact } from "@/lib/sms";
 import { daysAgoIso, loadClient, shortWhen, unreadTotal } from "./data";
 import { AppShell, Avatar, Flash } from "./ui";
@@ -106,10 +106,10 @@ export default async function Inbox({ params, searchParams }: Props) {
                   <div className="min-w-0 flex-1">
                     <div className="flex items-baseline justify-between gap-2">
                       <p className={`truncate ${isUnread ? "font-bold" : "font-medium"}`}>
-                        {ct.name ?? displayUk(ct.phone)}
+                        {ct.name ?? displayPhone(ct.phone)}
                         {ct.starred && <span className="ml-1 text-amber-500" aria-label="Starred">★</span>}
                       </p>
-                      <span className={`shrink-0 text-xs ${isUnread ? "font-semibold text-[#2a78d6]" : "text-neutral-500"}`}>{ct.last_message_at && shortWhen(ct.last_message_at, tz)}</span>
+                      <span className={`shrink-0 text-xs ${isUnread ? "font-semibold text-[#2a78d6]" : "text-neutral-500"}`}>{ct.last_message_at && shortWhen(ct.last_message_at, tz, localeFor(c.country))}</span>
                     </div>
                     <div className="flex items-center justify-between gap-2">
                       <p className={`truncate text-sm ${isUnread ? "text-neutral-900" : "text-neutral-500"}`}>
