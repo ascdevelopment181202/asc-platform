@@ -57,9 +57,13 @@ export function sayAndHangUp(message: string): Response {
 
 export type SentMessage = { sid: string; status: string };
 
-/** Sends one SMS through Twilio's REST API using the API key. Throws with Twilio's error message on failure. */
+/**
+ * Sends one SMS through Twilio's REST API. Throws with Twilio's error message on failure.
+ * Authenticates with the Account SID + Auth Token (the same token that signs webhooks),
+ * so there's one secret to keep right instead of three.
+ */
 export async function twilioSend(from: string, to: string, body: string): Promise<SentMessage> {
-  const auth = Buffer.from(`${env.twilioApiKeySid}:${env.twilioApiKeySecret}`).toString("base64");
+  const auth = Buffer.from(`${env.twilioAccountSid}:${env.twilioAuthToken}`).toString("base64");
   const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${env.twilioAccountSid}/Messages.json`, {
     method: "POST",
     headers: { Authorization: `Basic ${auth}`, "Content-Type": "application/x-www-form-urlencoded" },

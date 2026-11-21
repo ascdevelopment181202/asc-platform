@@ -44,13 +44,7 @@ export const env = {
   get twilioAccountSid() {
     return required("TWILIO_ACCOUNT_SID").trim();
   },
-  get twilioApiKeySid() {
-    return required("TWILIO_API_KEY_SID").trim();
-  },
-  get twilioApiKeySecret() {
-    return required("TWILIO_API_KEY_SECRET").trim();
-  },
-  /** Only used to check that webhook requests really come from Twilio. */
+  /** Sends texts (REST API) and checks that webhook requests really come from Twilio. */
   get twilioAuthToken() {
     return required("TWILIO_AUTH_TOKEN").trim();
   },
