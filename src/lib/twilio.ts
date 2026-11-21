@@ -23,10 +23,22 @@ export function isFromTwilio(request: Request, params: Record<string, string>): 
   const payload = Object.keys(params)
     .sort()
     .reduce((acc, key) => acc + key + params[key], publicUrl);
-  const expected = createHmac("sha1", env.twilioAuthToken).update(payload, "utf8").digest("base64");
+  const token = env.twilioAuthToken;
+  const expected = createHmac("sha1", token).update(payload, "utf8").digest("base64");
   const a = Buffer.from(expected);
   const b = Buffer.from(signature);
-  return a.length === b.length && timingSafeEqual(a, b);
+  const ok = a.length === b.length && timingSafeEqual(a, b);
+  if (!ok) {
+    // Safe to log: no secret values, just enough to tell a wrong token from a wrong URL.
+    console.warn("Twilio signature mismatch", {
+      signedUrl: publicUrl,
+      requestUrl: request.url,
+      accountSidMatches: params.AccountSid ? params.AccountSid === env.twilioAccountSid : "no AccountSid param",
+      tokenLength: token.length,
+      tokenLooksLikeAuthToken: /^[0-9a-f]{32}$/.test(token),
+    });
+  }
+  return ok;
 }
 
 const escapeXml = (s: string) =>

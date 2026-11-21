@@ -42,17 +42,17 @@ export const env = {
     return required("GOOGLE_CLIENT_SECRET");
   },
   get twilioAccountSid() {
-    return required("TWILIO_ACCOUNT_SID");
+    return required("TWILIO_ACCOUNT_SID").trim();
   },
   get twilioApiKeySid() {
-    return required("TWILIO_API_KEY_SID");
+    return required("TWILIO_API_KEY_SID").trim();
   },
   get twilioApiKeySecret() {
-    return required("TWILIO_API_KEY_SECRET");
+    return required("TWILIO_API_KEY_SECRET").trim();
   },
   /** Only used to check that webhook requests really come from Twilio. */
   get twilioAuthToken() {
-    return required("TWILIO_AUTH_TOKEN");
+    return required("TWILIO_AUTH_TOKEN").trim();
   },
   get contactPhone() {
     return process.env.CONTACT_PHONE ?? "07784 071383";
