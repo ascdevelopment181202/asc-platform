@@ -144,8 +144,19 @@ ${signoff()}`,
 }
 
 /** Sent when a client's business texting number is set up: app link, install steps and forwarding codes. */
-export function phoneWelcomeEmail(p: { firstName: string; appUrl: string; twilioNumber: string; forwardingOn: string | null }) {
+export function phoneWelcomeEmail(p: {
+  firstName: string;
+  appUrl: string;
+  twilioNumber: string;
+  forwardingOn: string | null;
+  codes: { carrier: string; steps: { label: string; code: string }[]; off: string }[];
+  us: boolean;
+}) {
   const n = p.twilioNumber;
+  const codeBlocks = p.codes
+    .map((c) => `${p.codes.length > 1 ? `If you're on ${c.carrier}:\n` : ""}${c.steps.map((s) => `${s.code}   (${s.label.toLowerCase()})`).join("\n")}\nTo switch it off later: ${c.off}`)
+    .join("\n\n");
+  const example = p.us ? "2145550123" : "07700900123";
   return {
     subject: "Your missed-call texts and inbox app are ready",
     text: `Hi ${p.firstName},
@@ -153,16 +164,12 @@ export function phoneWelcomeEmail(p: { firstName: string; appUrl: string; twilio
 Your missed-call texts and review requests are set up. Two quick steps and you're live.
 
 1. SWITCH ON MISSED-CALL TEXTS
-${p.forwardingOn ? `On the phone customers call you on (${p.forwardingOn}), dial` : "On your phone, dial"} each of these and press call:
+${p.forwardingOn ? `On the phone customers call you on (${p.forwardingOn}), open the keypad, type` : "On your phone, open the keypad, type"} each code below and press call:
 
-**61*${n}*11*20#   (calls you don't answer within 20 seconds)
-**67*${n}#   (when you're busy on another call)
-**62*${n}#   (when your phone is off or has no signal)
+${codeBlocks}
 
-You'll see a message saying it's switched on. Your phone still rings as normal. Only calls you miss go to us, and we text the caller straight back.
-
-To switch it all off at any point, dial ##002#
-
+You'll see or hear a confirmation. Your phone still rings as normal. Only calls you miss come to us, and we text the caller straight back. This replaces voicemail for missed calls.
+${p.us ? "\nNote: your texts go live once your business is approved by the US carriers (we handle this, it usually takes a few days). Calls are logged in your app straight away.\n" : ""}
 2. PUT YOUR INBOX APP ON YOUR HOME SCREEN
 Your app: ${p.appUrl}
 
@@ -173,7 +180,7 @@ Keep this link to yourself. It opens your inbox without a password.
 
 WHAT YOU'LL USE IT FOR
 - Inbox: missed calls and customer texts. Tap one to reply or call back.
-- Reviews: after each job tap "Job done", or text DONE 07700900123 Sarah to ${n}. We'll ask them for a Google review.
+- Reviews: after each job tap "Job done", or text DONE ${example} Sarah to ${n}. We'll ask them for a Google review.
 - Results: your numbers for the month.
 
 ${signoff()}`,

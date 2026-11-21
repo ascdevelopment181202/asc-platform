@@ -2,7 +2,7 @@ import "server-only";
 import { db, type Client } from "./supabase";
 import { clientLabel } from "./clients";
 import { env } from "./env";
-import { isUkMobile, normalizeUk } from "./phone";
+import { isTextable, localeFor, normalizePhone, type Country } from "./phone";
 import { twilioSend } from "./twilio";
 
 export type Contact = {
@@ -55,6 +55,17 @@ export const DEFAULT_TEMPLATES = {
   review_followup: "Hi {name}, a quick reminder from {business}. If you have a minute, a Google review would mean a lot: {link} Reply STOP to opt out",
 };
 
+/** US carriers expect opt-out wording in the first text a number sends to someone. */
+const US_TEMPLATES = {
+  missed_call: "Hi, it's {business}. Sorry we missed your call! We'll call you back shortly, or reply to this text with what you need. Reply STOP to opt out",
+  missed_call_after_hours: "Hi, it's {business}. Sorry we missed you, we're closed right now. Reply with what you need and we'll get back to you first thing. Reply STOP to opt out",
+  review: "Hi {name}, thanks for choosing {business}. If you were happy with the job, a quick Google review would really help us: {link} Reply STOP to opt out",
+  review_followup: DEFAULT_TEMPLATES.review_followup,
+};
+
+export const countryOf = (c: Pick<Client, "country">): Country => (c.country === "US" ? "US" : "GB");
+export const templatesFor = (c: Pick<Client, "country">) => (countryOf(c) === "US" ? US_TEMPLATES : DEFAULT_TEMPLATES);
+
 export const TEMPLATE_HELP = "Use {business} for the business name, {name} for the customer's first name and {link} for the review link.";
 
 export function fill(template: string, vars: Record<string, string>) {
@@ -95,14 +106,14 @@ export const reviewLink = (job: Pick<Job, "review_token">) => `${env.appUrl}/v/$
 
 export function missedCallText(c: Client, date = new Date()) {
   const open = isOpen(c, date);
-  const template = open
-    ? c.missed_call_template || DEFAULT_TEMPLATES.missed_call
-    : c.missed_call_after_hours_template || DEFAULT_TEMPLATES.missed_call_after_hours;
+  const t = templatesFor(c);
+  const template = open ? c.missed_call_template || t.missed_call : c.missed_call_after_hours_template || t.missed_call_after_hours;
   return fill(template, { business: businessName(c) });
 }
 
 export function reviewText(c: Client, contact: Pick<Contact, "name">, job: Pick<Job, "review_token">, step: number) {
-  const template = step === 1 ? c.review_template || DEFAULT_TEMPLATES.review : c.review_followup_template || DEFAULT_TEMPLATES.review_followup;
+  const t = templatesFor(c);
+  const template = step === 1 ? c.review_template || t.review : c.review_followup_template || t.review_followup;
   return fill(template, { business: businessName(c), name: firstName(contact.name), link: reviewLink(job) });
 }
 
@@ -138,7 +149,7 @@ export async function sendSms(p: { client: Client; to: string; body: string; kin
     .single<{ id: string }>();
   try {
     if (!p.client.twilio_number) throw new Error("No Twilio number set for this client");
-    const sent = await twilioSend(p.client.twilio_number, p.to, p.body);
+    const sent = await twilioSend({ from: p.client.twilio_number, messagingServiceSid: p.client.messaging_service_sid }, p.to, p.body);
     if (log) await db().from("sms_log").update({ twilio_message_sid: sent.sid, status: sent.status }).eq("id", log.id);
     if (p.contactId && CONVERSATION_KINDS.includes(p.kind)) {
       if (p.kind === "missed_call") await bumpConversation(p.contactId, "Missed call · auto-text sent", "call", false);
@@ -152,6 +163,10 @@ export async function sendSms(p: { client: Client; to: string; body: string; kin
     return { ok: false as const, logId: log?.id ?? null, error };
   }
 }
+
+/** "14:05" in the UK, "2:05 PM" in the US, in the client's time zone. */
+export const clientTime = (c: Pick<Client, "country" | "timezone">, date: Date) =>
+  date.toLocaleTimeString(localeFor(c.country), { hour: "numeric", minute: "2-digit", timeZone: c.timezone || "Europe/London" });
 
 /** Moves the customer's conversation to the top of the inbox. Inbound activity counts as unread. */
 export async function bumpConversation(contactId: string, preview: string, direction: "inbound" | "outbound" | "call", unread: boolean) {
@@ -179,8 +194,9 @@ export async function createJob(
   c: Client,
   input: { phone: string; name?: string | null; source: Job["source"]; startAt?: Date },
 ): Promise<CreateJobResult> {
-  const phone = normalizeUk(input.phone);
-  if (!isUkMobile(phone)) return { ok: false, error: "That doesn't look like a UK mobile number (07...)." };
+  const country = countryOf(c);
+  const phone = normalizePhone(input.phone, country);
+  if (!isTextable(phone, country)) return { ok: false, error: country === "US" ? "That doesn't look like a US cell number." : "That doesn't look like a UK mobile number (07...)." };
   if (!c.google_review_url) return { ok: false, error: "No Google review link is set up yet. Ask ASC to add it." };
 
   const contact = await upsertContact(c.id, phone, input.name);
@@ -208,15 +224,15 @@ export async function createJob(
 }
 
 /** Parses pasted lines or a CSV export into name + number pairs. Accepts "Name, 07..." or "07..., Name" or just a number. */
-export function parseCustomerList(text: string): { name: string | null; phone: string }[] {
+export function parseCustomerList(text: string, country: Country = "GB"): { name: string | null; phone: string }[] {
   const rows: { name: string | null; phone: string }[] = [];
   const seen = new Set<string>();
   for (const line of text.split(/\r?\n/)) {
     const cells = line.split(/[,;\t]/).map((s) => s.trim().replace(/^"|"$/g, "")).filter(Boolean);
     if (!cells.length) continue;
-    const phoneCell = cells.find((cell) => isUkMobile(normalizeUk(cell)));
+    const phoneCell = cells.find((cell) => isTextable(normalizePhone(cell, country), country));
     if (!phoneCell) continue;
-    const phone = normalizeUk(phoneCell)!;
+    const phone = normalizePhone(phoneCell, country)!;
     if (seen.has(phone)) continue;
     seen.add(phone);
     const name = cells.find((cell) => cell !== phoneCell && /[a-z]/i.test(cell) && !/@/.test(cell)) ?? null;

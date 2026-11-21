@@ -25,8 +25,8 @@ export default async function NewMessage({ params, searchParams }: { params: Pro
         <form action={startConversation} className="space-y-3 rounded-2xl bg-white p-4 shadow-sm">
           <input type="hidden" name="token" value={token} />
           <label className="block text-sm font-medium">
-            Mobile number
-            <input name="phone" type="tel" inputMode="tel" required autoFocus placeholder="07..." className="mt-1 w-full rounded-xl border border-neutral-300 px-4 py-3 text-base font-normal" />
+            {c.country === "US" ? "Cell number" : "Mobile number"}
+            <input name="phone" type="tel" inputMode="tel" required autoFocus placeholder={c.country === "US" ? "(214) 555-0123" : "07..."} className="mt-1 w-full rounded-xl border border-neutral-300 px-4 py-3 text-base font-normal" />
           </label>
           <label className="block text-sm font-medium">
             Name (optional)

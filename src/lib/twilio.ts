@@ -59,15 +59,18 @@ export type SentMessage = { sid: string; status: string };
 
 /**
  * Sends one SMS through Twilio's REST API. Throws with Twilio's error message on failure.
- * Authenticates with the Account SID + Auth Token (the same token that signs webhooks),
- * so there's one secret to keep right instead of three.
+ * Authenticates with the Account SID + Auth Token (the same token that signs webhooks).
+ * US clients send through their Messaging Service, which carries their A2P 10DLC registration.
  */
-export async function twilioSend(from: string, to: string, body: string): Promise<SentMessage> {
+export async function twilioSend(sender: { from: string; messagingServiceSid?: string | null }, to: string, body: string): Promise<SentMessage> {
   const auth = Buffer.from(`${env.twilioAccountSid}:${env.twilioAuthToken}`).toString("base64");
+  const params = new URLSearchParams({ To: to, Body: body, StatusCallback: `${env.appUrl}/api/twilio/status` });
+  if (sender.messagingServiceSid) params.set("MessagingServiceSid", sender.messagingServiceSid);
+  else params.set("From", sender.from);
   const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${env.twilioAccountSid}/Messages.json`, {
     method: "POST",
     headers: { Authorization: `Basic ${auth}`, "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ From: from, To: to, Body: body, StatusCallback: `${env.appUrl}/api/twilio/status` }),
+    body: params,
     cache: "no-store",
   });
   const json = (await res.json().catch(() => ({}))) as { sid?: string; status?: string; message?: string; code?: number };
@@ -78,39 +81,103 @@ export async function twilioSend(from: string, to: string, body: string): Promis
 const api = (path: string) => `https://api.twilio.com/2010-04-01/Accounts/${env.twilioAccountSid}${path}`;
 const authHeader = () => `Basic ${Buffer.from(`${env.twilioAccountSid}:${env.twilioAuthToken}`).toString("base64")}`;
 
+type Bought = { phoneNumber: string; sid: string };
+
+async function purchase(phoneNumber: string, friendlyName: string, extra: Record<string, string>): Promise<Bought> {
+  const res = await fetch(api(`/IncomingPhoneNumbers.json`), {
+    method: "POST",
+    headers: { Authorization: authHeader(), "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      PhoneNumber: phoneNumber,
+      FriendlyName: friendlyName.slice(0, 64),
+      VoiceUrl: `${env.appUrl}/api/twilio/voice`,
+      VoiceMethod: "POST",
+      SmsUrl: `${env.appUrl}/api/twilio/sms`,
+      SmsMethod: "POST",
+      ...extra,
+    }),
+    cache: "no-store",
+  });
+  const json = (await res.json().catch(() => ({}))) as { phone_number?: string; sid?: string; message?: string; code?: number };
+  if (res.ok && json.phone_number && json.sid) return { phoneNumber: json.phone_number, sid: json.sid };
+  throw new Error(`Twilio ${json.code ?? res.status}: ${json.message ?? "purchase failed"}`);
+}
+
+async function available(path: string): Promise<string[]> {
+  const res = await fetch(api(path), { headers: { Authorization: authHeader() }, cache: "no-store" });
+  const json = (await res.json().catch(() => ({}))) as { available_phone_numbers?: { phone_number: string }[] };
+  return res.ok ? (json.available_phone_numbers ?? []).map((n) => n.phone_number) : [];
+}
+
 /**
  * Buys a UK mobile number (voice + SMS) and points it at our webhooks in one go.
  * Uses the approved UK mobile regulatory bundle; set TWILIO_UK_BUNDLE_SID to use a different one.
  */
-export async function buyUkMobileNumber(friendlyName: string): Promise<string> {
-  const search = await fetch(api(`/AvailablePhoneNumbers/GB/Mobile.json?SmsEnabled=true&VoiceEnabled=true&PageSize=10`), {
-    headers: { Authorization: authHeader() },
-    cache: "no-store",
-  });
-  const found = (await search.json().catch(() => ({}))) as { available_phone_numbers?: { phone_number: string }[]; message?: string };
-  const candidates = found.available_phone_numbers ?? [];
-  if (!search.ok || !candidates.length) throw new Error(`No UK mobile numbers available right now${found.message ? `: ${found.message}` : ""}`);
-
+export async function buyUkMobileNumber(friendlyName: string): Promise<Bought> {
+  const candidates = await available(`/AvailablePhoneNumbers/GB/Mobile.json?SmsEnabled=true&VoiceEnabled=true&PageSize=10`);
+  if (!candidates.length) throw new Error("No UK mobile numbers available right now");
   const bundleSid = process.env.TWILIO_UK_BUNDLE_SID?.trim() || "BU3b23308d91d929b2bce6e19ca1a386c3";
   let lastError = "";
-  for (const { phone_number } of candidates.slice(0, 3)) {
-    const res = await fetch(api(`/IncomingPhoneNumbers.json`), {
-      method: "POST",
-      headers: { Authorization: authHeader(), "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        PhoneNumber: phone_number,
-        BundleSid: bundleSid,
-        FriendlyName: friendlyName.slice(0, 64),
-        VoiceUrl: `${env.appUrl}/api/twilio/voice`,
-        VoiceMethod: "POST",
-        SmsUrl: `${env.appUrl}/api/twilio/sms`,
-        SmsMethod: "POST",
-      }),
-      cache: "no-store",
-    });
-    const json = (await res.json().catch(() => ({}))) as { phone_number?: string; message?: string; code?: number };
-    if (res.ok && json.phone_number) return json.phone_number;
-    lastError = `Twilio ${json.code ?? res.status}: ${json.message ?? "purchase failed"}`;
+  for (const n of candidates.slice(0, 3)) {
+    try {
+      return await purchase(n, friendlyName, { BundleSid: bundleSid });
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : String(err);
+    }
   }
   throw new Error(lastError);
+}
+
+/**
+ * Buys a US local number, near the owner's area code when possible, points it at our webhooks,
+ * and puts it in a new Messaging Service for this client. Texts only send once that service is
+ * linked to an approved A2P 10DLC campaign (done in the Twilio console).
+ */
+export async function buyUsLocalNumber(friendlyName: string, nearNumber?: string | null): Promise<Bought & { messagingServiceSid: string }> {
+  const areaCode = nearNumber?.match(/^\+1(\d{3})/)?.[1];
+  let candidates = areaCode ? await available(`/AvailablePhoneNumbers/US/Local.json?SmsEnabled=true&VoiceEnabled=true&AreaCode=${areaCode}&PageSize=10`) : [];
+  if (!candidates.length) candidates = await available(`/AvailablePhoneNumbers/US/Local.json?SmsEnabled=true&VoiceEnabled=true&PageSize=10`);
+  if (!candidates.length) throw new Error("No US numbers available right now");
+
+  let bought: Bought | null = null;
+  let lastError = "";
+  for (const n of candidates.slice(0, 3)) {
+    try {
+      bought = await purchase(n, friendlyName, {});
+      break;
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : String(err);
+    }
+  }
+  if (!bought) throw new Error(lastError);
+
+  // Messaging Service: inbound texts still use the number's own webhook.
+  const svcRes = await fetch("https://messaging.twilio.com/v1/Services", {
+    method: "POST",
+    headers: { Authorization: authHeader(), "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ FriendlyName: friendlyName.slice(0, 64), UseInboundWebhookOnNumber: "true", StatusCallback: `${env.appUrl}/api/twilio/status` }),
+    cache: "no-store",
+  });
+  const svc = (await svcRes.json().catch(() => ({}))) as { sid?: string; message?: string };
+  if (!svcRes.ok || !svc.sid) throw new Error(`Bought ${bought.phoneNumber} but couldn't create its Messaging Service: ${svc.message ?? svcRes.status}`);
+  const addRes = await fetch(`https://messaging.twilio.com/v1/Services/${svc.sid}/PhoneNumbers`, {
+    method: "POST",
+    headers: { Authorization: authHeader(), "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ PhoneNumberSid: bought.sid }),
+    cache: "no-store",
+  });
+  if (!addRes.ok) throw new Error(`Bought ${bought.phoneNumber} but couldn't add it to its Messaging Service`);
+  return { ...bought, messagingServiceSid: svc.sid };
+}
+
+/** A2P 10DLC campaign status for a US client's Messaging Service ("not registered" if none yet). */
+export async function a2pStatus(messagingServiceSid: string): Promise<string> {
+  try {
+    const res = await fetch(`https://messaging.twilio.com/v1/Services/${messagingServiceSid}/Compliance/Usa2p`, { headers: { Authorization: authHeader() }, cache: "no-store" });
+    const json = (await res.json().catch(() => ({}))) as { compliance?: { campaign_status?: string }[] };
+    const status = json.compliance?.[0]?.campaign_status;
+    return status ? status.replace(/_/g, " ").toLowerCase() : "not registered";
+  } catch {
+    return "unknown";
+  }
 }

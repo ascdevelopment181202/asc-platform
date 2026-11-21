@@ -3,8 +3,8 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { db, type Client } from "@/lib/supabase";
-import { isUkMobile, normalizeUk } from "@/lib/phone";
-import { BULK_PER_DAY, createJob, parseCustomerList, sendSms, upsertContact, type Contact } from "@/lib/sms";
+import { isTextable, normalizePhone } from "@/lib/phone";
+import { BULK_PER_DAY, countryOf, createJob, parseCustomerList, sendSms, upsertContact, type Contact } from "@/lib/sms";
 
 // These run from the client's private app link. The token is the only key, same as /r/[token].
 
@@ -60,9 +60,10 @@ export async function markUnread(formData: FormData) {
 export async function startConversation(formData: FormData) {
   const c = await clientFor(formData);
   const page = `/m/${c.dashboard_token}/new`;
-  const phone = normalizeUk(String(formData.get("phone") ?? ""));
+  const country = countryOf(c);
+  const phone = normalizePhone(String(formData.get("phone") ?? ""), country);
   const body = String(formData.get("body") ?? "").trim();
-  if (!isUkMobile(phone)) return back(page, "err", "That doesn't look like a UK mobile number (07...).");
+  if (!isTextable(phone, country)) return back(page, "err", country === "US" ? "That doesn't look like a US cell number." : "That doesn't look like a UK mobile number (07...).");
   if (!body) back(page, "err", "Write a message first.");
   const contact = await upsertContact(c.id, phone, String(formData.get("name") ?? "").trim() || null);
   if (contact.opted_out_at) back(page, "err", "This customer replied STOP, so texts to them are blocked.");
@@ -95,8 +96,8 @@ export async function bulkUpload(formData: FormData) {
     if (file.size > 2_000_000) back(page, "err", "That file is too big. Keep it under 2MB.");
     text += `\n${await file.text()}`;
   }
-  const rows = parseCustomerList(text);
-  if (!rows.length) back(page, "err", "Couldn't find any UK mobile numbers in that list.");
+  const rows = parseCustomerList(text, countryOf(c));
+  if (!rows.length) back(page, "err", "Couldn't find any mobile numbers in that list.");
   if (rows.length > 500) back(page, "err", "That's over 500 numbers. Send ASC the list and we'll load it for you.");
 
   let added = 0;

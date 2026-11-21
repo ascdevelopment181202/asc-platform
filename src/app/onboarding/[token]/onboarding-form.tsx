@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from "react";
 import { createClient } from "@supabase/supabase-js";
-import { DAYS, LEAD_DELIVERY, MAX_FILE_MB, MAX_PHOTOS, TRADES, VISIT_OPTIONS, type OnboardingInput } from "@/lib/onboarding-fields";
+import { COUNTRIES, DAYS, US_CARRIERS, US_TIMEZONES, LEAD_DELIVERY, MAX_FILE_MB, MAX_PHOTOS, TRADES, VISIT_OPTIONS, type OnboardingInput } from "@/lib/onboarding-fields";
 import { getUploadTargets, submitOnboarding } from "./actions";
 
 const BUCKET = "client-assets";
@@ -27,6 +27,11 @@ export function OnboardingForm({ token, supabaseUrl, supabaseAnonKey, managerEma
   const supabase = useMemo(() => createClient(supabaseUrl, supabaseAnonKey), [supabaseUrl, supabaseAnonKey]);
   const [values, setValues] = useState<Values>({
     ...defaults,
+    country: "UK",
+    usTimezone: "",
+    carrier: "",
+    legalName: "",
+    ein: "",
     customersCallMobile: "" as Values["customersCallMobile"],
     customersCallNumber: "",
     trade: "" as Values["trade"],
@@ -173,26 +178,41 @@ export function OnboardingForm({ token, supabaseUrl, supabaseAnonKey, managerEma
     );
   }
 
+  const us = values.country === "US";
   const toggleDay = (d: number) =>
     set("hoursDays", (values.hoursDays ?? []).includes(d) ? (values.hoursDays ?? []).filter((x) => x !== d) : [...(values.hoursDays ?? []), d].sort());
 
   return (
     <form onSubmit={onSubmit} className="mt-8 space-y-8" noValidate>
       <Section title="The essentials" hint="About 2 minutes. This is all we need to start.">
+        <Choice label="Where is your business?" name="country" options={COUNTRIES} values={values} set={set} errors={errors} />
         <Text label="Business name, as it should appear on Google" name="businessName" values={values} set={set} errors={errors} />
         <div className="grid gap-5 sm:grid-cols-2">
           <Text label="Your name" name="contactName" values={values} set={set} errors={errors} />
-          <Text label="Your mobile" hint="Where we send your app link and alerts" name="mobile" type="tel" values={values} set={set} errors={errors} />
+          <Text label={us ? "Your cell number" : "Your mobile"} hint="Where we send your app link and alerts" name="mobile" type="tel" values={values} set={set} errors={errors} />
         </div>
         <Choice label="Is this the number customers call you on?" name="customersCallMobile" options={["Yes", "No"] as const} values={values} set={set} errors={errors} />
         {values.customersCallMobile === "No" && (
           <Text label="Which number do customers call?" hint="The one on your van, website or Google listing" name="customersCallNumber" type="tel" values={values} set={set} errors={errors} />
         )}
         <Text label="Email" name="email" type="email" values={values} set={set} errors={errors} />
+        {us && (
+          <>
+            <Choice label="Your cell carrier" name="carrier" options={US_CARRIERS} values={values} set={set} errors={errors} />
+            <Choice label="Your time zone" name="usTimezone" options={Object.keys(US_TIMEZONES)} values={values} set={set} errors={errors} />
+            <div className="rounded-xl bg-amber-50 p-4 text-sm text-neutral-800">
+              <p className="font-medium">For your business texting number</p>
+              <p className="mt-1">US carriers require every business that texts customers to be registered. We do this for you with the details below.</p>
+            </div>
+            <Text label="Legal business name" hint="As registered with the IRS or your state. If you're a sole proprietor, your full name." name="legalName" values={values} set={set} errors={errors} />
+            <Text label="EIN" hint="Leave blank if you're a sole proprietor without one" optional name="ein" values={values} set={set} errors={errors} />
+            <Text label="Business address" name="address" values={values} set={set} errors={errors} />
+          </>
+        )}
         <Choice label="Your trade" name="trade" options={TRADES} values={values} set={set} errors={errors} />
         {values.trade === "Other" && <Text label="What's your trade?" name="tradeOther" values={values} set={set} errors={errors} />}
         <Area label="Services you offer" hint="One per line, most profitable first" name="services" values={values} set={set} errors={errors} />
-        <Area label="Towns and postcodes you cover" hint="Main area first" rows={2} name="areas" values={values} set={set} errors={errors} />
+        <Area label={us ? "Cities and ZIP codes you cover" : "Towns and postcodes you cover"} hint="Main area first" rows={2} name="areas" values={values} set={set} errors={errors} />
 
         <div>
           <Label text="Opening hours" hint="Missed calls outside these hours get a 'we're closed, we'll call you first thing' text" />
@@ -253,7 +273,7 @@ export function OnboardingForm({ token, supabaseUrl, supabaseAnonKey, managerEma
             <Check label="I've added you as a manager" checked={!!values.gbpManagerAdded} onChange={(v) => set("gbpManagerAdded", v)} />
           </div>
           <Text label="Link to your Google reviews" hint="On your Google profile: 'Ask for reviews', then copy the link" optional name="reviewsLink" values={values} set={set} errors={errors} />
-          <Text label="Business address" hint="Leave blank if you work from home and don't want it shown" optional name="address" values={values} set={set} errors={errors} />
+          {!us && <Text label="Business address" hint="Leave blank if you work from home and don't want it shown" optional name="address" values={values} set={set} errors={errors} />}
           <Choice label="Do customers come to you, or do you go to them?" name="customersVisit" options={VISIT_OPTIONS} values={values} set={set} errors={errors} />
           <div className="grid gap-5 sm:grid-cols-2">
             <Text label="Years trading" optional name="yearsTrading" values={values} set={set} errors={errors} />

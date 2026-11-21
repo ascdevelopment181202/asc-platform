@@ -15,18 +15,18 @@ export async function unreadTotal(clientId: string) {
 }
 
 /** "14:05" today, "Yesterday", "Mon", or "3 Nov" in the client's time zone. Short, like a phone's messages list. */
-export function shortWhen(iso: string, tz: string) {
+export function shortWhen(iso: string, tz: string, locale = "en-GB") {
   const d = new Date(iso);
   const now = new Date();
   const day = (x: Date) => x.toLocaleDateString("en-GB", { timeZone: tz });
-  if (day(d) === day(now)) return d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: tz });
+  if (day(d) === day(now)) return d.toLocaleTimeString(locale, { hour: "numeric", minute: "2-digit", timeZone: tz });
   if (day(d) === day(new Date(now.getTime() - 86400_000))) return "Yesterday";
-  if (now.getTime() - d.getTime() < 6 * 86400_000) return d.toLocaleDateString("en-GB", { weekday: "short", timeZone: tz });
-  return d.toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: tz });
+  if (now.getTime() - d.getTime() < 6 * 86400_000) return d.toLocaleDateString(locale, { weekday: "short", timeZone: tz });
+  return d.toLocaleDateString(locale, { day: "numeric", month: "short", timeZone: tz });
 }
 
-export function fullWhen(iso: string, tz: string) {
-  return new Date(iso).toLocaleString("en-GB", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: tz });
+export function fullWhen(iso: string, tz: string, locale = "en-GB") {
+  return new Date(iso).toLocaleString(locale, { weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit", timeZone: tz });
 }
 
 export const daysAgoIso = (days: number) => new Date(Date.now() - days * 86400_000).toISOString();
