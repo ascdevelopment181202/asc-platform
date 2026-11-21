@@ -7,17 +7,23 @@ import { fullWhen, loadClient } from "../../data";
 import { Avatar } from "../../ui";
 import { AutoRefresh } from "../../auto-refresh";
 import { ScrollToEnd } from "./scroll-to-end";
-import { markUnread, sendMessage, toggleStar } from "../../actions";
+import { markUnread, toggleStar } from "../../actions";
+import { requestReview } from "../../crm-actions";
+import { Composer } from "./composer";
+import { bookingUrl, fillSnippet, money, snippetsFor } from "@/lib/crm";
+import { clientLabel } from "@/lib/clients";
+import { env } from "@/lib/env";
 
 export const dynamic = "force-dynamic";
 
-type Props = { params: Promise<{ token: string; contactId: string }>; searchParams: Promise<{ err?: string }> };
+type Props = { params: Promise<{ token: string; contactId: string }>; searchParams: Promise<{ err?: string; ok?: string }> };
 
 type Item =
   | { kind: "in"; at: string; body: string }
   | { kind: "out"; at: string; body: string; status: string; auto: string | null }
   | { kind: "call"; at: string; note: string }
-  | { kind: "event"; at: string; note: string };
+  | { kind: "event"; at: string; note: string; href?: string }
+  | { kind: "note"; at: string; body: string };
 
 const AUTO_LABEL: Record<string, string> = { missed_call: "Auto-text after missed call", review: "Review request" };
 const SKIP_NOTE: Record<string, string> = {
@@ -30,18 +36,22 @@ const SKIP_NOTE: Record<string, string> = {
 /** One conversation: every call, text and review event with this customer, plus a reply box. */
 export default async function Thread({ params, searchParams }: Props) {
   const { token, contactId } = await params;
-  const { err } = await searchParams;
+  const { err, ok } = await searchParams;
   const c = await loadClient(token);
   if (!c || !/^[0-9a-f-]{36}$/.test(contactId)) notFound();
   const { data: contact } = await db().from("contacts").select("*").eq("id", contactId).eq("client_id", c.id).maybeSingle<Contact>();
   if (!contact) notFound();
   const tz = c.timezone || "Europe/London";
 
-  const [{ data: calls }, { data: sent }, { data: replies }, { data: jobs }] = await Promise.all([
+  const [{ data: calls }, { data: sent }, { data: replies }, { data: jobs }, { data: notes }, { data: appts }, { data: docs }, snippets] = await Promise.all([
     db().from("calls").select("created_at, text_sent, skipped_reason").eq("contact_id", contact.id).returns<{ created_at: string; text_sent: boolean; skipped_reason: string | null }[]>(),
     db().from("sms_log").select("created_at, body, status, kind").eq("contact_id", contact.id).in("kind", ["missed_call", "review", "manual"]).returns<{ created_at: string; body: string; status: string; kind: string }[]>(),
     db().from("replies").select("created_at, body").eq("contact_id", contact.id).returns<{ created_at: string; body: string | null }[]>(),
     db().from("jobs").select("created_at, review_clicked_at").eq("contact_id", contact.id).returns<{ created_at: string; review_clicked_at: string | null }[]>(),
+    db().from("contact_notes").select("created_at, body").eq("contact_id", contact.id).returns<{ created_at: string; body: string }[]>(),
+    db().from("appointments").select("id, created_at, starts_at, title, status").eq("contact_id", contact.id).returns<{ id: string; created_at: string; starts_at: string; title: string; status: string }[]>(),
+    db().from("documents").select("id, kind, number, total_pence, currency, sent_at, accepted_at, paid_at").eq("contact_id", contact.id).returns<{ id: string; kind: string; number: number; total_pence: number; currency: string; sent_at: string | null; accepted_at: string | null; paid_at: string | null }[]>(),
+    snippetsFor(c.id),
   ]);
 
   const items: Item[] = [
@@ -52,7 +62,22 @@ export default async function Thread({ params, searchParams }: Props) {
       { kind: "event", at: j.created_at, note: "Job marked done, review request scheduled" },
       ...(j.review_clicked_at ? [{ kind: "event", at: j.review_clicked_at, note: "Opened the review link" } as Item] : []),
     ]),
+    ...(notes ?? []).map((n): Item => ({ kind: "note", at: n.created_at, body: n.body })),
+    ...(appts ?? []).map((a): Item => ({ kind: "event", at: a.created_at, note: `Booked: ${a.title}, ${fullWhen(a.starts_at, tz, localeFor(c.country))}${a.status === "cancelled" ? " (cancelled)" : ""}`, href: `/m/${token}/calendar/${a.id}` })),
+    ...(docs ?? []).flatMap((d): Item[] => {
+      const label = `${d.kind === "quote" ? "Quote" : "Invoice"} #${d.number} (${money(d.total_pence, d.currency)})`;
+      const href = `/m/${token}/docs/${d.id}`;
+      return [
+        ...(d.sent_at ? [{ kind: "event", at: d.sent_at, note: `${label} sent`, href } as Item] : []),
+        ...(d.accepted_at ? [{ kind: "event", at: d.accepted_at, note: `${label} accepted`, href } as Item] : []),
+        ...(d.paid_at ? [{ kind: "event", at: d.paid_at, note: `${label} paid`, href } as Item] : []),
+      ];
+    }),
   ].sort((a, b) => a.at.localeCompare(b.at));
+
+  const vars = { name: contact.name, business: clientLabel(c), booking: bookingUrl(c, env.appUrl) };
+  const readySnippets = snippets.map((sn) => ({ id: sn.id, title: sn.title, text: fillSnippet(sn.body, vars) }));
+  const here = `/m/${token}/c/${contact.id}`;
 
   // "New" divider before the messages that were unread when they opened this, like GoHighLevel. Then mark read.
   const inboundIdx = items.map((it, i) => (it.kind === "in" || it.kind === "call" ? i : -1)).filter((i) => i >= 0);
@@ -74,11 +99,13 @@ export default async function Thread({ params, searchParams }: Props) {
               <path d="M15 18l-6-6 6-6" />
             </svg>
           </Link>
-          <Avatar name={contact.name} phone={contact.phone} />
-          <div className="min-w-0 flex-1">
-            <p className="truncate font-semibold leading-tight">{contact.name ?? displayPhone(contact.phone)}</p>
-            <p className="truncate text-xs text-neutral-500">{contact.name ? displayPhone(contact.phone) : "Customer"}{contact.opted_out_at ? " · opted out" : ""}</p>
-          </div>
+          <Link href={`/m/${token}/contacts/${contact.id}`} className="flex min-w-0 flex-1 items-center gap-2">
+            <Avatar name={contact.name} phone={contact.phone} />
+            <div className="min-w-0">
+              <p className="truncate font-semibold leading-tight">{contact.name ?? displayPhone(contact.phone)}</p>
+              <p className="truncate text-xs text-neutral-500">{contact.name ? displayPhone(contact.phone) : "Tap for details"}{contact.opted_out_at ? " · opted out" : ""}</p>
+            </div>
+          </Link>
           <form action={toggleStar}>
             <input type="hidden" name="token" value={token} />
             <input type="hidden" name="contactId" value={contact.id} />
@@ -92,7 +119,19 @@ export default async function Thread({ params, searchParams }: Props) {
             </svg>
           </a>
         </div>
+        <div className="mx-auto flex max-w-xl gap-1.5 overflow-x-auto px-3 pb-2 text-xs font-medium">
+          <form action={requestReview}>
+            <input type="hidden" name="token" value={token} />
+            <input type="hidden" name="contactId" value={contact.id} />
+            <input type="hidden" name="back" value={here} />
+            <button className="shrink-0 rounded-full bg-neutral-100 px-3 py-1.5">⭐ Ask for review</button>
+          </form>
+          <Link href={`/m/${token}/calendar/new?contact=${contact.id}`} className="shrink-0 rounded-full bg-neutral-100 px-3 py-1.5">📅 Book</Link>
+          <Link href={`/m/${token}/docs/new?kind=quote&contact=${contact.id}`} className="shrink-0 rounded-full bg-neutral-100 px-3 py-1.5">📝 Quote</Link>
+          <Link href={`/m/${token}/docs/new?kind=invoice&contact=${contact.id}`} className="shrink-0 rounded-full bg-neutral-100 px-3 py-1.5">Invoice</Link>
+        </div>
       </header>
+      {ok && <p className="mx-auto mt-2 max-w-xl rounded-xl bg-green-50 p-3 text-sm text-green-900">{ok}</p>}
 
       <main className="mx-auto w-full max-w-xl flex-1 space-y-2 px-3 py-4">
         {items.length === 0 && <p className="py-10 text-center text-sm text-neutral-500">No messages yet.</p>}
@@ -153,16 +192,7 @@ export default async function Thread({ params, searchParams }: Props) {
         {contact.opted_out_at ? (
           <p className="mx-auto max-w-xl px-4 py-4 text-center text-sm text-neutral-500">This customer replied STOP, so you can&apos;t text them. You can still call.</p>
         ) : (
-          <form action={sendMessage} className="mx-auto flex max-w-xl items-end gap-2 px-3 py-2">
-            <input type="hidden" name="token" value={token} />
-            <input type="hidden" name="contactId" value={contact.id} />
-            <textarea name="body" rows={1} required placeholder="Text message" className="max-h-40 min-h-11 flex-1 resize-none rounded-2xl border border-neutral-300 px-4 py-2.5 text-base" />
-            <button aria-label="Send" className="flex size-11 shrink-0 items-center justify-center rounded-full bg-[#2a78d6] text-white active:bg-[#1f62b3]">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-                <path d="M3.4 20.4l17.4-7.5a1 1 0 0 0 0-1.8L3.4 3.6a1 1 0 0 0-1.4 1.2L4.3 12l-2.3 7.2a1 1 0 0 0 1.4 1.2z" />
-              </svg>
-            </button>
-          </form>
+          <Composer token={token} contactId={contact.id} snippets={readySnippets} back={here} />
         )}
       </footer>
     </div>

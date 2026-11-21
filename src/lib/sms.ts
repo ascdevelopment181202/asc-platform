@@ -4,6 +4,7 @@ import { clientLabel } from "./clients";
 import { env } from "./env";
 import { isTextable, localeFor, normalizePhone, type Country } from "./phone";
 import { twilioSend } from "./twilio";
+import { setStage } from "./crm";
 
 export type Contact = {
   id: string;
@@ -17,7 +18,15 @@ export type Contact = {
   last_message_direction: "inbound" | "outbound" | "call" | null;
   unread_count: number;
   starred: boolean;
+  email: string | null;
+  address: string | null;
+  tags: string[];
+  stage: Stage | null;
+  stage_changed_at: string | null;
+  job_value_pence: number | null;
 };
+
+export type Stage = "new" | "quoted" | "booked" | "done" | "paid" | "lost";
 
 export type Job = {
   id: string;
@@ -220,6 +229,7 @@ export async function createJob(
   if (stepError) throw stepError;
 
   await db().from("contacts").update({ last_review_request_at: new Date().toISOString() }).eq("id", contact.id);
+  if (input.source !== "bulk") await setStage(contact, "done");
   return { ok: true, job, contact, firstSendAt: start };
 }
 

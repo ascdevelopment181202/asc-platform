@@ -3,6 +3,7 @@ import { db, type Client } from "@/lib/supabase";
 import { clientLabel, once } from "@/lib/clients";
 import { notifyAdmin } from "@/lib/email";
 import { inSendingWindow, reviewText, sendSms, type Contact, type Job } from "@/lib/sms";
+import { whenLabel, type Appointment } from "@/lib/crm";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -76,6 +77,34 @@ export async function GET(request: Request) {
     const result = await sendSms({ client: c, to: contact.phone, body: reviewText(c, contact, job, m.step), kind: "review", contactId: contact.id });
     if (result.logId) await db().from("review_messages").update({ sms_log_id: result.logId }).eq("id", m.id);
     (result.ok ? sent : skipped).push(`${clientLabel(c)} step ${m.step}${result.ok ? "" : `: ${result.error}`}`);
+  }
+
+  // Booking reminders: the day before (anything starting in the next 24 hours), inside 9am to 7pm.
+  const { data: upcoming } = await db()
+    .from("appointments")
+    .select("*")
+    .eq("status", "booked")
+    .is("reminder_sent_at", null)
+    .not("contact_id", "is", null)
+    .gt("starts_at", new Date(now.getTime() + 2 * 3600_000).toISOString())
+    .lte("starts_at", new Date(now.getTime() + 24 * 3600_000).toISOString())
+    .limit(100)
+    .returns<Appointment[]>();
+  for (const a of upcoming ?? []) {
+    const c = await getClient(a.client_id);
+    if (!c || !c.sms_enabled || !c.twilio_number || !inSendingWindow(c, now)) continue;
+    const { data: claimed } = await db().from("appointments").update({ reminder_sent_at: now.toISOString() }).eq("id", a.id).is("reminder_sent_at", null).select("id");
+    if (!claimed?.length) continue;
+    const { data: contact } = await db().from("contacts").select("*").eq("id", a.contact_id!).maybeSingle<Contact>();
+    if (!contact || contact.opted_out_at) continue;
+    const r = await sendSms({
+      client: c,
+      to: contact.phone,
+      kind: "manual",
+      contactId: contact.id,
+      body: `Reminder: ${clientLabel(c)} is booked to see you ${whenLabel(c, a.starts_at)}. Reply to this text if anything has changed.`,
+    });
+    (r.ok ? sent : skipped).push(`reminder ${clientLabel(c)}${r.ok ? "" : `: ${r.error}`}`);
   }
 
   // Forwarding health check, once a day per client at most.

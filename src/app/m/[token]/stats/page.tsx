@@ -29,7 +29,7 @@ export default async function Stats({ params }: { params: Promise<{ token: strin
   const monthName = now.toLocaleDateString("en-GB", { month: "long", timeZone: tz });
 
   return (
-    <AppShell token={token} active="stats" unread={unread} title="Results">
+    <AppShell token={token} active="more" unread={unread} title="Results">
       <div className="space-y-4 p-4">
         <section>
           <h2 className="mb-2 px-1 text-sm font-semibold text-neutral-600">{monthName} so far</h2>

@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-type Tab = "inbox" | "reviews" | "stats";
+type Tab = "inbox" | "contacts" | "calendar" | "jobs" | "more";
 
 /** Page frame with the bottom tab bar, like the LeadConnector app. */
 export function AppShell({ token, active, unread, title, action, children }: { token: string; active: Tab; unread: number; title: string; action?: React.ReactNode; children: React.ReactNode }) {
@@ -14,10 +14,12 @@ export function AppShell({ token, active, unread, title, action, children }: { t
       </header>
       <main className="mx-auto max-w-xl pb-28">{children}</main>
       <nav className="fixed inset-x-0 bottom-0 z-20 border-t border-neutral-200 bg-white" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
-        <div className="mx-auto grid max-w-xl grid-cols-3">
+        <div className="mx-auto grid max-w-xl grid-cols-5">
           <NavItem href={`/m/${token}`} label="Inbox" on={active === "inbox"} badge={unread} icon={<path d="M3 13h4l2 3h6l2-3h4M5 5h14l2 8v5a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-5z" />} />
-          <NavItem href={`/m/${token}/reviews`} label="Reviews" on={active === "reviews"} icon={<path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z" />} />
-          <NavItem href={`/m/${token}/stats`} label="Results" on={active === "stats"} icon={<path d="M4 20V10M10 20V4M16 20v-7M22 20H2" />} />
+          <NavItem href={`/m/${token}/contacts`} label="Contacts" on={active === "contacts"} icon={<path d="M16 19v-1a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v1M9 10a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM22 19v-1a4 4 0 0 0-3-3.9M16 3.1a3.5 3.5 0 0 1 0 6.8" />} />
+          <NavItem href={`/m/${token}/calendar`} label="Calendar" on={active === "calendar"} icon={<path d="M4 6h16v14H4zM4 10h16M8 3v4M16 3v4" />} />
+          <NavItem href={`/m/${token}/jobs`} label="Jobs" on={active === "jobs"} icon={<path d="M3 7h18v13H3zM8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M3 13h18" />} />
+          <NavItem href={`/m/${token}/more`} label="More" on={active === "more"} icon={<path d="M5 12h.01M12 12h.01M19 12h.01" />} />
         </div>
       </nav>
     </>
@@ -52,5 +54,50 @@ export function Avatar({ name, phone }: { name: string | null; phone: string }) 
     <span className="flex size-11 shrink-0 items-center justify-center rounded-full text-sm font-semibold text-white" style={{ background: `hsl(${hue} 55% 48%)` }}>
       {initials}
     </span>
+  );
+}
+
+/** Simple top bar with a back link, for detail pages. */
+export function SubHeader({ back, title, action }: { back: string; title: string; action?: React.ReactNode }) {
+  return (
+    <header className="sticky top-0 z-20 border-b border-neutral-200 bg-white/95 backdrop-blur" style={{ paddingTop: "env(safe-area-inset-top)" }}>
+      <div className="mx-auto flex max-w-xl items-center gap-1 px-2 py-2">
+        <Link href={back} aria-label="Back" className="flex size-10 items-center justify-center rounded-full active:bg-neutral-100">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M15 18l-6-6 6-6" />
+          </svg>
+        </Link>
+        <h1 className="min-w-0 flex-1 truncate font-semibold">{title}</h1>
+        {action}
+      </div>
+    </header>
+  );
+}
+
+export function PlusButton({ href, label }: { href: string; label: string }) {
+  return (
+    <Link href={href} aria-label={label} className="flex size-10 items-center justify-center rounded-full bg-[#2a78d6] text-white shadow-sm active:bg-[#1f62b3]">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" aria-hidden>
+        <path d="M12 5v14M5 12h14" />
+      </svg>
+    </Link>
+  );
+}
+
+export const field = "w-full rounded-xl border border-neutral-300 bg-white px-4 py-3 text-base";
+export const primaryBtn = "w-full rounded-xl bg-[#2a78d6] px-4 py-3.5 text-base font-semibold text-white active:bg-[#1f62b3]";
+export const quietBtn = "w-full rounded-xl bg-white px-4 py-3 text-base font-medium text-neutral-800 ring-1 ring-neutral-300 active:bg-neutral-50";
+
+export function Card({ title, children, action }: { title?: string; children: React.ReactNode; action?: React.ReactNode }) {
+  return (
+    <section className="rounded-2xl bg-white p-4 shadow-sm">
+      {(title || action) && (
+        <div className="mb-2 flex items-center justify-between gap-2">
+          {title && <h2 className="font-semibold">{title}</h2>}
+          {action}
+        </div>
+      )}
+      {children}
+    </section>
   );
 }
