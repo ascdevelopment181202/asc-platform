@@ -5,7 +5,8 @@ import { db, type Client } from "@/lib/supabase";
 import { clientLabel, createTask, once } from "@/lib/clients";
 import { formReceivedEmail, notifyAdmin, sendEmail } from "@/lib/email";
 import { firstNameOf } from "@/lib/onboarding";
-import { FIELD_LABELS, MAX_FILE_MB, MAX_PHOTOS, onboardingSchema, type OnboardingInput } from "@/lib/onboarding-fields";
+import { describeHours, FIELD_LABELS, MAX_FILE_MB, MAX_PHOTOS, onboardingSchema, type OnboardingInput } from "@/lib/onboarding-fields";
+import { isUkMobile, normalizeUk } from "@/lib/phone";
 
 const BUILD_HOURS = 48;
 const ALLOWED = /\.(jpe?g|png|webp|heic|heif|gif|svg|pdf|ai|eps)$/i;
@@ -67,6 +68,10 @@ export async function submitOnboarding(token: string, input: OnboardingInput): P
   }
 
   const { logoPath, photoPaths, ...answers } = data;
+  answers.hours = answers.hours || describeHours(answers.hoursDays, answers.hoursStart, answers.hoursEnd);
+  const ownerMobile = normalizeUk(answers.mobile);
+  // Only a link that opens Google's "write a review" box is used for review texts; anything else waits for you to check.
+  const reviewUrl = /^https:\/\/(g\.page\/r\/|search\.google\.com\/local\/writereview)/.test(answers.reviewsLink) ? answers.reviewsLink : null;
   const now = new Date();
   const dueAt = new Date(now.getTime() + BUILD_HOURS * 3600_000);
 
@@ -89,6 +94,10 @@ export async function submitOnboarding(token: string, input: OnboardingInput): P
       full_name: client.full_name || answers.contactName,
       first_name: client.first_name || answers.contactName.split(" ")[0],
       phone: client.phone || answers.mobile,
+      // Missed call text back + reviews: set up the parts the form gives us. The Twilio number is added in admin.
+      owner_mobile: client.owner_mobile || (isUkMobile(ownerMobile) ? ownerMobile : null),
+      business_hours: { start: answers.hoursStart, end: answers.hoursEnd, days: answers.hoursDays },
+      google_review_url: client.google_review_url || reviewUrl,
     })
     .eq("id", client.id)
     .is("form_submitted_at", null)
@@ -109,10 +118,11 @@ export async function submitOnboarding(token: string, input: OnboardingInput): P
         `${clientLabel(updated)} submitted their onboarding form. The 48-hour clock has started.`,
         "",
         ...Object.entries(answers)
-          .filter(([, v]) => v !== "" && v !== false)
+          .filter(([, v]) => v !== "" && v !== false && !(Array.isArray(v)))
           .map(([k, v]) => `${FIELD_LABELS[k] ?? k}: ${v === true ? "Yes" : v}`),
         "",
-        `Logo: ${logoPath ? "uploaded" : "none"}  |  Photos: ${photoPaths.length}`,
+        `Logo: ${logoPath ? "uploaded" : "none"}  |  Photos: ${photoPaths.length}${photoPaths.length ? "" : " (use photos from their website or Google)"}`,
+        `Phone: click "Set up phone" on their admin page to buy their number and send their app link.${answers.customersCallMobile === "No" ? ` Customers call ${answers.customersCallNumber}, so forwarding goes on that line.` : ""}`,
         `Dashboard: ${env.appUrl}/admin/clients/${client.id}`,
       ]),
     );

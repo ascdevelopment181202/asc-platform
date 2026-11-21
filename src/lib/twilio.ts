@@ -74,3 +74,43 @@ export async function twilioSend(from: string, to: string, body: string): Promis
   if (!res.ok || !json.sid) throw new Error(`Twilio ${json.code ?? res.status}: ${json.message ?? "send failed"}`);
   return { sid: json.sid, status: json.status ?? "queued" };
 }
+
+const api = (path: string) => `https://api.twilio.com/2010-04-01/Accounts/${env.twilioAccountSid}${path}`;
+const authHeader = () => `Basic ${Buffer.from(`${env.twilioAccountSid}:${env.twilioAuthToken}`).toString("base64")}`;
+
+/**
+ * Buys a UK mobile number (voice + SMS) and points it at our webhooks in one go.
+ * Uses the approved UK mobile regulatory bundle; set TWILIO_UK_BUNDLE_SID to use a different one.
+ */
+export async function buyUkMobileNumber(friendlyName: string): Promise<string> {
+  const search = await fetch(api(`/AvailablePhoneNumbers/GB/Mobile.json?SmsEnabled=true&VoiceEnabled=true&PageSize=10`), {
+    headers: { Authorization: authHeader() },
+    cache: "no-store",
+  });
+  const found = (await search.json().catch(() => ({}))) as { available_phone_numbers?: { phone_number: string }[]; message?: string };
+  const candidates = found.available_phone_numbers ?? [];
+  if (!search.ok || !candidates.length) throw new Error(`No UK mobile numbers available right now${found.message ? `: ${found.message}` : ""}`);
+
+  const bundleSid = process.env.TWILIO_UK_BUNDLE_SID?.trim() || "BU3b23308d91d929b2bce6e19ca1a386c3";
+  let lastError = "";
+  for (const { phone_number } of candidates.slice(0, 3)) {
+    const res = await fetch(api(`/IncomingPhoneNumbers.json`), {
+      method: "POST",
+      headers: { Authorization: authHeader(), "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        PhoneNumber: phone_number,
+        BundleSid: bundleSid,
+        FriendlyName: friendlyName.slice(0, 64),
+        VoiceUrl: `${env.appUrl}/api/twilio/voice`,
+        VoiceMethod: "POST",
+        SmsUrl: `${env.appUrl}/api/twilio/sms`,
+        SmsMethod: "POST",
+      }),
+      cache: "no-store",
+    });
+    const json = (await res.json().catch(() => ({}))) as { phone_number?: string; message?: string; code?: number };
+    if (res.ok && json.phone_number) return json.phone_number;
+    lastError = `Twilio ${json.code ?? res.status}: ${json.message ?? "purchase failed"}`;
+  }
+  throw new Error(lastError);
+}
