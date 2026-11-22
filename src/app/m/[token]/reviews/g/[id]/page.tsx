@@ -21,7 +21,7 @@ export default async function GoogleReviewPage({ params, searchParams }: { param
   const tz = c.timezone || "Europe/London";
 
   return (
-    <AppShell token={token} active="more" unread={unread} title="Google review">
+    <AppShell token={token} active="reviews" unread={unread} title="Google review">
       <Flash ok={sp.ok} err={sp.err} />
       <div className="space-y-4 p-4">
         <Link href={`/m/${token}/reviews`} className="text-sm text-[#2a78d6]">← Reviews</Link>

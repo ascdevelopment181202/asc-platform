@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/supabase";
 import { isTextable, normalizePhone } from "@/lib/phone";
-import { BULK_PER_DAY, countryOf, createJob, upsertContact, type Contact, type Stage } from "@/lib/sms";
+import { BULK_PER_DAY, countryOf, createJob, upsertContact, type Contact, type Stage, firstSendLabel, reviewSettings } from "@/lib/sms";
 import { parseMoney, setStage, STAGES } from "@/lib/crm";
 import { clientFromForm, loadContact } from "./data";
 import { dueFrom } from "@/lib/tasks";
@@ -68,9 +68,9 @@ export async function changeStage(f: FormData) {
   await setStage(contact, stage, { manual: true });
   const to = safeBack(f, c.dashboard_token, `/m/${c.dashboard_token}/contacts/${contact.id}`);
   // Moving someone to "Job done" asks them for a review (once per customer every 180 days).
-  if (stage === "done" && contact.stage !== "done") {
+  if (stage === "done" && contact.stage !== "done" && reviewSettings(c).onStage) {
     const result = await createJob(c, { phone: contact.phone, name: contact.name, source: "dashboard" });
-    if (result.ok) back(to, "ok", "Moved to Job done. Review request goes out in about 2 hours.");
+    if (result.ok) back(to, "ok", `Moved to Job done. Review request goes out ${firstSendLabel(c)}.`);
   }
   revalidatePath(to.split("?")[0]);
   redirect(to);
@@ -93,7 +93,7 @@ export async function requestReview(f: FormData) {
   const to = safeBack(f, c.dashboard_token, `/m/${c.dashboard_token}/contacts/${contact.id}`);
   const result = await createJob(c, { phone: contact.phone, name: contact.name, source: "dashboard" });
   if (!result.ok) back(to, "err", result.error);
-  back(to, "ok", "Review request scheduled. It goes out in about 2 hours.");
+  back(to, "ok", `Review request scheduled. It goes out ${firstSendLabel(c)}.`);
 }
 
 export async function addSnippet(f: FormData) {
@@ -229,7 +229,7 @@ export async function askFromToday(f: FormData) {
   const result = await createJob(c, { phone: contact.phone, name: contact.name, source: "dashboard", label: str(f, "label") || null, appointmentId: str(f, "appointmentId") || null });
   if (!result.ok) return back(to, "err", result.error);
   if (str(f, "appointmentId")) await db().from("appointments").update({ review_queued_at: new Date().toISOString() }).eq("id", str(f, "appointmentId")).eq("client_id", c.id);
-  return back(to, "ok", `${contact.name?.split(/\s+/)[0] ?? "They"} will get a review request in about 2 hours.`);
+  return back(to, "ok", `${contact.name?.split(/\s+/)[0] ?? "They"} will get a review request ${firstSendLabel(c)}.`);
 }
 
 /** Second ask after putting things right: one friendly text, outside the 6-month rule. */

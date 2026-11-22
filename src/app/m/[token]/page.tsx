@@ -69,6 +69,21 @@ export default async function Inbox({ params, searchParams }: Props) {
       <AutoRefresh seconds={10} />
       <Flash ok={sp.ok} err={sp.err} />
       <NotificationsToggle token={token} publicKey={publicKey} compact />
+      <div className="mx-4 mt-3 grid grid-cols-4 gap-2">
+        <Link href={`/m/${token}/today`} className="flex flex-col items-center gap-0.5 rounded-xl bg-[#2a78d6] py-2.5 text-[11px] font-semibold text-white active:bg-[#1f62b3]">
+          <span className="text-lg leading-none">⭐</span>Job done
+        </Link>
+        <Link href={`/m/${token}/reviews/qr`} className="flex flex-col items-center gap-0.5 rounded-xl bg-white py-2.5 text-[11px] font-semibold text-neutral-800 ring-1 ring-neutral-200 active:bg-neutral-50">
+          <span className="text-lg leading-none">📱</span>Review QR
+        </Link>
+        <Link href={`/m/${token}/campaigns/new`} className="flex flex-col items-center gap-0.5 rounded-xl bg-white py-2.5 text-[11px] font-semibold text-neutral-800 ring-1 ring-neutral-200 active:bg-neutral-50">
+          <span className="text-lg leading-none">📣</span>Campaign
+        </Link>
+        <Link href={`/m/${token}/tasks`} className="relative flex flex-col items-center gap-0.5 rounded-xl bg-white py-2.5 text-[11px] font-semibold text-neutral-800 ring-1 ring-neutral-200 active:bg-neutral-50">
+          <span className="text-lg leading-none">✅</span>Tasks
+          {tasksDue > 0 && <span className="absolute -right-1 -top-1 min-w-5 rounded-full bg-red-500 px-1.5 text-center text-[10px] font-bold leading-5 text-white">{tasksDue}</span>}
+        </Link>
+      </div>
       {tasksDue > 0 && (
         <Link href={`/m/${token}/tasks`} className="mx-4 mt-3 flex items-center justify-between rounded-xl bg-amber-50 px-4 py-2.5 text-sm font-medium text-amber-900 ring-1 ring-amber-200">
           <span>✅ {tasksDue} follow-up{tasksDue === 1 ? "" : "s"} due today</span>

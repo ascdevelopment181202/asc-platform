@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/supabase";
 import { displayPhone, localeFor } from "@/lib/phone";
-import { loadClient, shortWhen, unreadTotal } from "../data";
+import { daysAgoIso, loadClient, shortWhen, unreadTotal } from "../data";
 import { AppShell, Flash } from "../ui";
 import { bulkUpload, jobDone } from "../actions";
 import { ShareLink } from "./share-link";
@@ -46,14 +46,49 @@ export default async function Reviews({ params, searchParams }: { params: Promis
     db().from("google_reviews").select("*").eq("client_id", c.id).order("created_at", { ascending: false }).limit(20).returns<GoogleReview[]>(),
   ]);
   const reviews = gReviews ?? [];
+  const monthAgo = daysAgoIso(30);
+  const recentJobs = (jobs ?? []).filter((j) => j.created_at >= monthAgo);
+  const askedMonth = recentJobs.length;
+  const openedMonth = recentJobs.filter((j) => j.review_clicked_at || j.rating).length;
   const needReply = reviews.filter((r) => !r.reply).length;
   const ready = c.sms_enabled && !!c.twilio_number;
 
   return (
-    <AppShell token={token} active="more" unread={unread} title="Reviews">
+    <AppShell token={token} active="reviews" unread={unread} title="Reviews">
       <Flash ok={sp.ok} err={sp.err} />
       <div className="space-y-4 p-4">
         {!ready && <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">Texts aren&apos;t switched on yet. ASC will let you know when everything is live.</p>}
+
+        <section className="rounded-2xl bg-white p-4 shadow-sm">
+          <div className="grid grid-cols-3 gap-2 text-center">
+            <div className="rounded-xl bg-amber-50 p-2">
+              <p className="text-xl font-bold text-amber-700">{c.google_rating ? `${Number(c.google_rating).toFixed(1)}★` : "–"}</p>
+              <p className="text-[11px] text-neutral-600">{c.google_review_count ?? 0} Google reviews</p>
+            </div>
+            <div className="rounded-xl bg-blue-50 p-2">
+              <p className="text-xl font-bold text-blue-800">{askedMonth}</p>
+              <p className="text-[11px] text-neutral-600">asked, last 30 days</p>
+            </div>
+            <div className="rounded-xl bg-green-50 p-2">
+              <p className="text-xl font-bold text-green-800">{openedMonth}</p>
+              <p className="text-[11px] text-neutral-600">opened the link</p>
+            </div>
+          </div>
+          <Link href={`/m/${token}/today`} className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-[#2a78d6] px-4 py-4 text-lg font-semibold text-white active:bg-[#1f62b3]">
+            ✓ Job done? Ask for a review
+          </Link>
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            <Link href={`/m/${token}/reviews/qr`} className="rounded-xl bg-neutral-900 px-3 py-3 text-center text-sm font-semibold text-white active:bg-neutral-800">
+              📱 Show QR
+              <span className="block text-[11px] font-normal text-neutral-300">At the door, works best</span>
+            </Link>
+            <Link href={`/m/${token}/campaigns`} className="rounded-xl bg-white px-3 py-3 text-center text-sm font-semibold text-neutral-900 ring-1 ring-neutral-300 active:bg-neutral-50">
+              📣 Win back customers
+              <span className="block text-[11px] font-normal text-neutral-500">Text an offer</span>
+            </Link>
+          </div>
+          <Link href={`/m/${token}/reviews/how`} className="mt-3 block text-center text-sm font-medium text-[#2a78d6]">How it works: triggers, timings and wording →</Link>
+        </section>
 
         <section className="rounded-2xl bg-white shadow-sm">
           <div className="flex items-start justify-between gap-3 px-4 pt-4">
@@ -97,19 +132,8 @@ export default async function Reviews({ params, searchParams }: { params: Promis
         </section>
 
         <section className="rounded-2xl bg-white p-4 shadow-sm">
-          <h2 className="text-lg font-semibold">Finished a job?</h2>
+          <h2 className="text-lg font-semibold">Ask someone not in the app</h2>
           <p className="mt-0.5 text-sm text-neutral-600">We&apos;ll text your customer asking for a Google review.</p>
-          <Link href={`/m/${token}/reviews/qr`} className="mt-3 flex items-center gap-3 rounded-xl bg-neutral-900 px-4 py-3 text-white active:bg-neutral-800">
-            <span className="text-2xl" aria-hidden>📱</span>
-            <span className="min-w-0 flex-1">
-              <span className="block font-semibold">Still with the customer? Show them the QR</span>
-              <span className="block text-xs text-neutral-300">They scan it and leave a review there and then. Asking in person works best.</span>
-            </span>
-          </Link>
-          <Link href={`/m/${token}/today`} className="mt-3 flex items-center justify-between rounded-xl bg-blue-50 px-4 py-3 text-sm font-medium text-blue-900 active:bg-blue-100">
-            <span>Pick from today&apos;s customers, one tap each</span>
-            <span>→</span>
-          </Link>
           <form action={jobDone} className="mt-3 space-y-2">
             <input type="hidden" name="token" value={token} />
             <input name="name" placeholder="Customer's first name" autoComplete="off" className="w-full rounded-xl border border-neutral-300 px-4 py-3 text-base" />

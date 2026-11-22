@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { db } from "@/lib/supabase";
 import { clientLabel } from "@/lib/clients";
 import { isTextable, normalizePhone } from "@/lib/phone";
-import { countryOf, createJob, sendSms, upsertContact, type Contact } from "@/lib/sms";
+import { countryOf, createJob, sendSms, upsertContact, type Contact, firstSendLabel } from "@/lib/sms";
 import { setStage, whenLabel, zonedToUtc, type Appointment } from "@/lib/crm";
 import { clientFromForm, loadContact } from "./data";
 
@@ -107,7 +107,7 @@ export async function markAppointmentDone(f: FormData) {
   if (contact && f.get("review") === "on") {
     const result = await createJob(c, { phone: contact.phone, name: contact.name, source: "dashboard", label: appt.title, appointmentId: appt.id });
     if (!result.ok) back(page, "err", `Marked as done. Review request not sent: ${result.error}`);
-    back(page, "ok", "Marked as done. Review request goes out in about 2 hours.");
+    back(page, "ok", `Marked as done. Review request goes out ${firstSendLabel(c)}.`);
   }
   if (contact) await setStage(contact, "done");
   back(page, "ok", "Marked as done.");

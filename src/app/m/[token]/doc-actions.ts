@@ -5,7 +5,7 @@ import { db } from "@/lib/supabase";
 import { clientLabel } from "@/lib/clients";
 import { env } from "@/lib/env";
 import { isTextable, normalizePhone } from "@/lib/phone";
-import { countryOf, createJob, sendSms, upsertContact, type Contact } from "@/lib/sms";
+import { countryOf, createJob, sendSms, upsertContact, type Contact, firstSendLabel } from "@/lib/sms";
 import { currencyFor, docLink, docTitle, money, parseMoney, setStage, totals, type Doc, type LineItem } from "@/lib/crm";
 import { clientFromForm, loadContact } from "./data";
 
@@ -93,7 +93,7 @@ export async function markPaid(f: FormData) {
   // Getting paid means the job's finished: ask for a review unless they untick it.
   if (contact && f.get("review") === "on") {
     const result = await createJob(c, { phone: contact.phone, name: contact.name, source: "dashboard", label: doc.items?.[0]?.description });
-    if (result.ok) back(page, "ok", "Marked as paid. Review request goes out in about 2 hours.");
+    if (result.ok) back(page, "ok", `Marked as paid. Review request goes out ${firstSendLabel(c)}.`);
   }
   back(page, "ok", "Marked as paid.");
 }

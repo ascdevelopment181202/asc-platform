@@ -66,3 +66,15 @@ export async function cancelAutoReply(f: FormData) {
   await db().from("google_reviews").update({ auto_reply_at: null }).eq("client_id", c.id).eq("id", str(f, "id"));
   redirect(`/m/${c.dashboard_token}/reviews/g/${str(f, "id")}?ok=${encodeURIComponent("OK, it won't be posted automatically.")}`);
 }
+
+/** Turns one review trigger on or off from the "How review requests work" screen. */
+export async function toggleTrigger(f: FormData) {
+  const c = await clientFromForm(f);
+  const key = str(f, "key");
+  const { reviewSettings } = await import("@/lib/sms");
+  const s = reviewSettings(c);
+  if (key === "booking") await db().from("clients").update({ auto_review_after_booking: !c.auto_review_after_booking }).eq("id", c.id);
+  else if (key === "onPaid" || key === "onStage") await db().from("clients").update({ review_settings: { ...s, [key]: !s[key] } }).eq("id", c.id);
+  revalidatePath(`/m/${c.dashboard_token}/reviews/how`);
+  redirect(`/m/${c.dashboard_token}/reviews/how?ok=${encodeURIComponent("Saved.")}`);
+}

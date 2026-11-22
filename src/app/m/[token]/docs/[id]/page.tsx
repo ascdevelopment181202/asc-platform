@@ -4,6 +4,7 @@ import { db } from "@/lib/supabase";
 import { env } from "@/lib/env";
 import { displayPhone, localeFor } from "@/lib/phone";
 import { DOC_STATUS, docLink, docTitle, money, type Doc } from "@/lib/crm";
+import { reviewSettings } from "@/lib/sms";
 import { fullWhen, loadClient, loadContact } from "../../data";
 import { Card, Flash, primaryBtn, quietBtn, SubHeader } from "../../ui";
 import { markPaid, quoteToInvoice, sendDocument, voidDocument } from "../../doc-actions";
@@ -98,7 +99,7 @@ export default async function DocPage({ params, searchParams }: { params: Promis
             {hidden}
             <button className="w-full rounded-xl bg-green-600 px-4 py-3.5 text-base font-semibold text-white">Mark as paid</button>
             <label className="mt-2 flex items-center gap-2 text-sm text-neutral-600">
-              <input type="checkbox" name="review" defaultChecked /> Also ask them for a Google review
+              <input type="checkbox" name="review" defaultChecked={reviewSettings(c).onPaid} /> Also ask them for a Google review
             </label>
           </form>
         )}

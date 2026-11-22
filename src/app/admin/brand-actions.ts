@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { db, type Client } from "@/lib/supabase";
 import { normalizeHex, uploadLogo } from "@/lib/brand";
+import { DEFAULT_REVIEW_SETTINGS, reviewSettings, type ReviewSettings } from "@/lib/sms";
 
 // Behind the /admin Basic auth in src/proxy.ts.
 
@@ -81,6 +82,7 @@ export async function saveAutopilot(f: FormData) {
       review_auto_reply: f.get("review_auto_reply") === "on",
       referral_ask: f.get("referral_ask") === "on",
       sender_name: str(f, "sender_name").slice(0, 40) || null,
+      review_settings: settingsFrom(f),
     })
     .eq("id", id);
   revalidatePath(`/admin/clients/${id}`);
@@ -109,4 +111,18 @@ export async function saveCompetitor(f: FormData) {
   await db().from("clients").update(patch).eq("id", id);
   revalidatePath(`/admin/clients/${id}`);
   redirect(`/admin/clients/${id}?ok=${encodeURIComponent(msg)}`);
+}
+
+function settingsFrom(f: FormData): ReviewSettings {
+  const num = (k: string, d: number) => (Number.isFinite(Number(str(f, k))) && str(f, k) !== "" ? Number(str(f, k)) : d);
+  return reviewSettings({
+    review_settings: {
+      firstDelayMin: num("firstDelayMin", DEFAULT_REVIEW_SETTINGS.firstDelayMin),
+      bookingDelayMin: num("bookingDelayMin", DEFAULT_REVIEW_SETTINGS.bookingDelayMin),
+      reminderDays: str(f, "reminderDays").split(/[,\s]+/).map(Number).filter((n) => n > 0),
+      laterDays: num("laterDays", DEFAULT_REVIEW_SETTINGS.laterDays),
+      onPaid: f.get("onPaid") === "on",
+      onStage: f.get("onStage") === "on",
+    },
+  });
 }

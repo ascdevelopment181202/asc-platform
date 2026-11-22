@@ -42,6 +42,12 @@ export default async function Contacts({ params, searchParams }: { params: Promi
           <input name="q" defaultValue={q} placeholder="Search name, number, email or address" className="w-full rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-base" />
         </form>
         {!q && !tag && (
+          <div className="grid grid-cols-2 gap-2">
+            <Link href={`/m/${token}/jobs`} className="rounded-xl bg-white px-3 py-2.5 text-center text-sm font-medium text-neutral-800 ring-1 ring-neutral-200 active:bg-neutral-50">📋 Jobs pipeline</Link>
+            <Link href={`/m/${token}/campaigns`} className="rounded-xl bg-white px-3 py-2.5 text-center text-sm font-medium text-neutral-800 ring-1 ring-neutral-200 active:bg-neutral-50">📣 Win back customers</Link>
+          </div>
+        )}
+        {!q && !tag && (
           <Link href={`/m/${token}/contacts/import`} className="block rounded-xl bg-white px-4 py-2.5 text-sm font-medium text-[#2a78d6] ring-1 ring-neutral-200 active:bg-neutral-50">
             Import customers from a file or your phone →
           </Link>
