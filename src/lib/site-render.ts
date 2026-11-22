@@ -138,3 +138,46 @@ export function breadcrumbSchema(ctx: SiteCtx, crumbs: [string, string | null][]
     })),
   };
 }
+
+/**
+ * The client's real Google reviews for the website's reviews section (kit "reviews").
+ * Only 5 star reviews with a few words, newest first. Nothing shows until there are at least three.
+ */
+export async function siteReviews(clientId: string) {
+  const [{ data: c }, { data: rows }] = await Promise.all([
+    db().from("clients").select("google_rating, google_review_count").eq("id", clientId).maybeSingle<{ google_rating: number | null; google_review_count: number | null }>(),
+    db()
+      .from("google_reviews")
+      .select("reviewer_name, comment, created_at")
+      .eq("client_id", clientId)
+      .eq("rating", 5)
+      .not("comment", "is", null)
+      .order("created_at", { ascending: false })
+      .limit(40)
+      .returns<{ reviewer_name: string | null; comment: string; created_at: string }[]>(),
+  ]);
+  const good = (rows ?? []).filter((r) => r.comment.trim().length >= 25).slice(0, 16);
+  if (good.length < 3 || !c?.google_rating) return undefined;
+  const short = (t: string) => (t.length > 260 ? `${t.slice(0, 257).replace(/\s+\S*$/, "")}…` : t);
+  // Display name only as first name + initial, like most review widgets.
+  const who = (n: string | null) => {
+    const parts = (n ?? "").trim().split(/\s+/).filter(Boolean);
+    return parts.length ? `${parts[0]}${parts[1] ? ` ${parts[1][0]}.` : ""}` : "Google user";
+  };
+  const when = (iso: string) => new Date(iso).toLocaleDateString("en-GB", { month: "short", year: "numeric" });
+  const cards = good.map((r) => ({ q: short(r.comment.trim()), n: who(r.reviewer_name), s: `Google review · ${when(r.created_at)}` }));
+  const headline =
+    good
+      .map((r) => (r.comment.trim().match(/^[^.!?]+[.!?]/)?.[0] ?? r.comment).trim())
+      .filter((t) => t.length >= 30 && t.length <= 120)
+      .sort((a, b) => a.length - b.length)[0] ?? "Brilliant job from start to finish.";
+  const rating = Number(c.google_rating);
+  const count = c.google_review_count ?? good.length;
+  const half = Math.ceil(cards.length / 2);
+  return {
+    quote: headline.replace(/^["“]|["”]$/g, ""),
+    sub: `Rated ${rating.toFixed(1)} out of 5 from ${count} Google review${count === 1 ? "" : "s"}.`,
+    plats: [{ n: "Google", v: rating.toFixed(1), dec: 1, stars: "★★★★★", small: `${count} reviews` }],
+    rows: cards.length >= 6 ? [cards.slice(0, half), cards.slice(half)] : [cards],
+  };
+}

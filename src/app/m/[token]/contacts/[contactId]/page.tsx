@@ -5,7 +5,7 @@ import { displayPhone, localeFor } from "@/lib/phone";
 import { currencyFor, money, STAGES } from "@/lib/crm";
 import { fullWhen, loadClient, loadContact, shortWhen } from "../../data";
 import { Avatar, Card, field, Flash, primaryBtn, SubHeader } from "../../ui";
-import { addNote, changeStage, requestReview, updateContact } from "../../crm-actions";
+import { addNote, changeStage, reaskReview, requestReview, updateContact } from "../../crm-actions";
 import { openTasks } from "@/lib/tasks";
 import { AddTaskForm, TaskList } from "../../tasks-ui";
 
@@ -32,6 +32,11 @@ export default async function ContactPage({ params, searchParams }: Props) {
     db().from("documents").select("id, kind, number, total_pence, currency, status, created_at").eq("contact_id", contact.id).order("created_at", { ascending: false }).limit(20).returns<{ id: string; kind: string; number: number; total_pence: number; currency: string; status: string; created_at: string }[]>(),
     openTasks(c.id, { contactId: contact.id, limit: 20 }),
   ]);
+  // An unhappy rating with no second ask yet: offer one once it's been put right.
+  const { data: lastJobs } = await db().from("jobs").select("id, source, rating, created_at").eq("contact_id", contact.id).order("created_at", { ascending: false }).limit(5).returns<{ id: string; source: string; rating: number | null; created_at: string }[]>();
+  const unhappy = (lastJobs ?? []).find((j) => j.rating !== null && j.rating <= 3);
+  const reasked = unhappy && (lastJobs ?? []).some((j) => j.source === "reask" && j.created_at > unhappy.created_at);
+  const offerReask = !!unhappy && !reasked && !contact.opted_out_at;
 
   const hidden = (
     <>
@@ -80,6 +85,18 @@ export default async function ContactPage({ params, searchParams }: Props) {
           </div>
           {contact.job_value_pence != null && <p className="mt-2 text-sm text-neutral-600">Job value: {money(contact.job_value_pence, currency)}</p>}
         </Card>
+
+        {offerReask && (
+          <section className="rounded-2xl bg-amber-50 p-4 ring-1 ring-amber-200">
+            <p className="font-semibold text-amber-950">They rated you {unhappy!.rating}★. Sorted it out?</p>
+            <p className="mt-0.5 text-sm text-amber-900">Once you&apos;ve put it right, ask again. Customers whose problem was fixed often leave the best reviews.</p>
+            <form action={reaskReview} className="mt-3">
+              {hidden}
+              <input type="hidden" name="back" value={here} />
+              <button className="w-full rounded-xl bg-amber-500 px-4 py-3 text-base font-semibold text-white active:bg-amber-600">It&apos;s sorted, ask {contact.name?.split(/\s+/)[0] ?? "them"} again</button>
+            </form>
+          </section>
+        )}
 
         <Card title="Follow-ups">
           {tasks.length > 0 && (

@@ -70,3 +70,43 @@ export async function saveReviewLocation(f: FormData) {
   revalidatePath(`/admin/clients/${id}`);
   redirect(`/admin/clients/${id}?ok=${encodeURIComponent(msg)}`);
 }
+
+/** Review autopilot switches and the name used in texts. */
+export async function saveAutopilot(f: FormData) {
+  const id = str(f, "clientId");
+  await db()
+    .from("clients")
+    .update({
+      auto_review_after_booking: f.get("auto_review_after_booking") === "on",
+      review_auto_reply: f.get("review_auto_reply") === "on",
+      referral_ask: f.get("referral_ask") === "on",
+      sender_name: str(f, "sender_name").slice(0, 40) || null,
+    })
+    .eq("id", id);
+  revalidatePath(`/admin/clients/${id}`);
+  redirect(`/admin/clients/${id}?ok=${encodeURIComponent("Review autopilot saved.")}`);
+}
+
+/** The competitor they want to beat: found on Google if a Places key is set, otherwise typed in. */
+export async function saveCompetitor(f: FormData) {
+  const id = str(f, "clientId");
+  const name = str(f, "competitor_name");
+  let patch: Record<string, unknown> = {
+    competitor_name: name || null,
+    competitor_rating: Number(str(f, "competitor_rating")) || null,
+    competitor_review_count: Number.parseInt(str(f, "competitor_review_count"), 10) || null,
+    competitor_place_id: null,
+  };
+  let msg = name ? "Competitor saved." : "Competitor cleared.";
+  if (name && process.env.GOOGLE_PLACES_API_KEY) {
+    const { findCompetitor } = await import("@/lib/weekly-reviews");
+    const found = await findCompetitor(`${name} ${str(f, "town")}`.trim()).catch(() => null);
+    if (found) {
+      patch = { competitor_name: found.name, competitor_rating: found.rating, competitor_review_count: found.count, competitor_place_id: found.id };
+      msg = `Found ${found.name} on Google: ${found.rating ?? "?"}★ from ${found.count ?? "?"} reviews. It updates every Monday.`;
+    }
+  }
+  await db().from("clients").update(patch).eq("id", id);
+  revalidatePath(`/admin/clients/${id}`);
+  redirect(`/admin/clients/${id}?ok=${encodeURIComponent(msg)}`);
+}

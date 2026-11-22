@@ -32,8 +32,12 @@ export type Job = {
   id: string;
   client_id: string;
   contact_id: string;
-  source: "dashboard" | "sms" | "bulk";
+  source: "dashboard" | "sms" | "bulk" | "booking" | "integration" | "reask";
   review_token: string;
+  job_label: string | null;
+  appointment_id: string | null;
+  referral_sent_at: string | null;
+  rescue_task_id: string | null;
   completed_at: string;
   review_clicked_at: string | null;
   cancelled_at: string | null;
@@ -60,8 +64,9 @@ export const BULK_PER_DAY = 40;
 export const DEFAULT_TEMPLATES = {
   missed_call: "Hi, it's {business}. Sorry we missed your call, we're probably on a job. What do you need help with? Reply here and we'll call you back shortly.",
   missed_call_after_hours: "Hi, it's {business}. Sorry we missed you, we're closed right now. What do you need help with? Reply here and we'll get back to you first thing.",
-  review: "Hi {name}, thanks for choosing {business}. If you were happy with the job, a quick Google review would really help us: {link}",
-  review_followup: "Hi {name}, a quick reminder from {business}. If you have a minute, a Google review would mean a lot: {link} Reply STOP to opt out",
+  review: "Hi {name}, it's {sender}. {thanks} If you're happy with how it went, would you mind leaving us a quick Google review? It really helps a small business like ours: {link}",
+  review_followup: "Hi {name}, it's {sender} again. If you get a minute, a quick Google review would mean a lot to us: {link} Reply STOP to opt out",
+  review_reask: "Hi {name}, it's {sender}. Thanks for giving us the chance to put things right. If you're happy now, a quick Google review would mean a lot: {link}",
 };
 
 /** After-hours text for clients who do emergency call-outs (set from the onboarding form). */
@@ -76,18 +81,22 @@ const US_TEMPLATES = {
   missed_call_after_hours: `${DEFAULT_TEMPLATES.missed_call_after_hours} Reply STOP to opt out`,
   review: `${DEFAULT_TEMPLATES.review} Reply STOP to opt out`,
   review_followup: DEFAULT_TEMPLATES.review_followup,
+  review_reask: `${DEFAULT_TEMPLATES.review_reask} Reply STOP to opt out`,
 };
 
 export const countryOf = (c: Pick<Client, "country">): Country => (c.country === "US" ? "US" : "GB");
 export const templatesFor = (c: Pick<Client, "country">) => (countryOf(c) === "US" ? US_TEMPLATES : DEFAULT_TEMPLATES);
 
-export const TEMPLATE_HELP = "Use {business} for the business name, {name} for the customer's first name and {link} for the review link.";
+export const TEMPLATE_HELP =
+  "Use {name} for the customer's first name, {sender} for \"Paul from P.I.C Driveways\", {business} for the business name, {job} for the job (\"driveway clean\"), {thanks} for a thank-you line that mentions the job, and {link} for the review link.";
 
 export function fill(template: string, vars: Record<string, string>) {
   return template.replace(/\{(\w+)\}/g, (m, k: string) => vars[k] ?? m).replace(/\s+/g, " ").trim();
 }
 
 const firstName = (name: string | null) => name?.trim().split(/\s+/)[0] || "there";
+/** First name, or null when we don't have one. */
+export const firstNameOf = (name: string | null | undefined) => name?.trim().split(/\s+/)[0] || null;
 
 /** Hour, minute and weekday (1 = Monday ... 7 = Sunday) in the client's time zone. */
 export function localTime(date: Date, timeZone: string) {
@@ -126,10 +135,46 @@ export function missedCallText(c: Client, date = new Date()) {
   return fill(template, { business: businessName(c) });
 }
 
-export function reviewText(c: Client, contact: Pick<Contact, "name">, job: Pick<Job, "review_token">, step: number) {
+/** "Paul from P.I.C Driveways", or just the business when we don't know who's sending. */
+export function senderLine(c: Client) {
+  const who = (c.sender_name || c.first_name || "").trim().split(/\s+/)[0];
+  return who ? `${who} from ${businessName(c)}` : businessName(c);
+}
+
+/**
+ * Cleans a booking title or invoice line into something that reads naturally in a text:
+ * "Sarah - Driveway Clean" -> "driveway clean". Returns null if it wouldn't read well.
+ */
+export function jobLabel(raw: string | null | undefined, customerName?: string | null): string | null {
+  if (!raw) return null;
+  let t = raw.replace(/\s+/g, " ").trim();
+  for (const part of (customerName ?? "").split(/\s+/).filter((p) => p.length > 1)) {
+    t = t.replace(new RegExp(`\\b${part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b'?s?`, "gi"), "");
+  }
+  t = t.replace(/^[\s\-–:|,/]+|[\s\-–:|,/.]+$/g, "").replace(/\s*[\-–|:]\s*/g, " ").replace(/\s+/g, " ").trim();
+  t = t.replace(/\b(mr|mrs|ms|miss|dr)\b\.?/gi, "").replace(/\s+(for|with|at|to|from|re)\s*$/i, "").replace(/\s+/g, " ").trim();
+  t = t.replace(/^(a|an|the|job|booking|appointment|visit|invoice for|quote for)\s+/i, "").trim();
+  if (t.length < 3 || t.length > 40 || /\d{3,}|@|https?:/i.test(t) || /^(job|work|booking|appointment|visit|labour|labor|materials?)$/i.test(t)) return null;
+  // Keep acronyms (UPVC, EV) as they are, lower-case the rest.
+  return t
+    .split(" ")
+    .map((w) => (w.length > 1 && w === w.toUpperCase() && /[A-Z]/.test(w) ? w : w.toLowerCase()))
+    .join(" ");
+}
+
+export function reviewText(c: Client, contact: Pick<Contact, "name">, job: Pick<Job, "review_token" | "job_label" | "source">, step: number) {
   const t = templatesFor(c);
-  const template = step === 1 ? c.review_template || t.review : c.review_followup_template || t.review_followup;
-  return fill(template, { business: businessName(c), name: firstName(contact.name), link: reviewLink(job) });
+  const template =
+    step === 1 ? (job.source === "reask" ? t.review_reask : c.review_template || t.review) : c.review_followup_template || t.review_followup;
+  const label = job.job_label?.trim();
+  return fill(template, {
+    business: businessName(c),
+    sender: senderLine(c),
+    name: firstName(contact.name),
+    job: label || "the job",
+    thanks: label ? `Thanks for choosing us for the ${label}.` : "Thanks for choosing us.",
+    link: reviewLink(job),
+  });
 }
 
 /** Finds or creates the customer record. Fills in a name if we didn't have one. */
@@ -207,7 +252,15 @@ export type CreateJobResult = { ok: true; job: Job; contact: Contact; firstSendA
  */
 export async function createJob(
   c: Client,
-  input: { phone: string; name?: string | null; source: Job["source"]; startAt?: Date },
+  input: {
+    phone: string;
+    name?: string | null;
+    source: Job["source"];
+    startAt?: Date;
+    label?: string | null; // booking title, invoice line or what the owner typed
+    appointmentId?: string | null;
+    email?: string | null;
+  },
 ): Promise<CreateJobResult> {
   const country = countryOf(c);
   const phone = normalizePhone(input.phone, country);
@@ -215,27 +268,38 @@ export async function createJob(
   if (!c.google_review_url) return { ok: false, error: "No Google review link is set up yet. Ask ASC to add it." };
 
   const contact = await upsertContact(c.id, phone, input.name);
+  if (input.email && !contact.email && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(input.email.trim())) {
+    await db().from("contacts").update({ email: input.email.trim() }).eq("id", contact.id);
+    contact.email = input.email.trim();
+  }
   if (contact.opted_out_at) return { ok: false, error: "This customer has opted out of texts." };
-  if (contact.last_review_request_at && Date.now() - Date.parse(contact.last_review_request_at) < REVIEW_COOLDOWN_MS) {
+  // A second ask after putting things right is the one exception to the 6-month rule.
+  if (input.source !== "reask" && contact.last_review_request_at && Date.now() - Date.parse(contact.last_review_request_at) < REVIEW_COOLDOWN_MS) {
     return { ok: false, error: "This customer was already asked for a review in the last 6 months." };
   }
 
   const { data: job, error } = await db()
     .from("jobs")
-    .insert({ client_id: c.id, contact_id: contact.id, source: input.source })
+    .insert({
+      client_id: c.id,
+      contact_id: contact.id,
+      source: input.source,
+      job_label: jobLabel(input.label, contact.name),
+      appointment_id: input.appointmentId ?? null,
+    })
     .select("*")
     .single<Job>();
   if (error) throw error;
 
   const start = input.startAt ?? new Date(Date.now() + REVIEW_STEPS_MS[0]);
-  const steps = input.source === "bulk" ? [0] : REVIEW_STEPS_MS.map((ms) => ms - REVIEW_STEPS_MS[0]);
+  const steps = input.source === "bulk" || input.source === "reask" ? [0] : REVIEW_STEPS_MS.map((ms) => ms - REVIEW_STEPS_MS[0]);
   const { error: stepError } = await db()
     .from("review_messages")
     .insert(steps.map((offset, i) => ({ job_id: job.id, client_id: c.id, step: i + 1, send_at: new Date(start.getTime() + offset).toISOString() })));
   if (stepError) throw stepError;
 
   await db().from("contacts").update({ last_review_request_at: new Date().toISOString() }).eq("id", contact.id);
-  if (input.source !== "bulk") await setStage(contact, "done");
+  if (input.source !== "bulk" && input.source !== "reask") await setStage(contact, "done");
   return { ok: true, job, contact, firstSendAt: start };
 }
 

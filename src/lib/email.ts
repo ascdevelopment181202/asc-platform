@@ -8,11 +8,18 @@ function client() {
   return resend;
 }
 
-type Mail = { to: string; subject: string; text: string; html?: string; replyTo?: string };
+type Mail = { to: string; subject: string; text: string; html?: string; replyTo?: string; fromName?: string };
 
-export async function sendEmail({ to, subject, text, html, replyTo }: Mail) {
+/** "P.I.C Driveways <hello@ascdev.tech>": same sending address, the client's name on it. */
+const fromAs = (name?: string) => {
+  if (!name) return env.emailFrom;
+  const addr = env.emailFrom.match(/<([^>]+)>/)?.[1] ?? env.emailFrom;
+  return `${name.replace(/[<>"]/g, "")} <${addr}>`;
+};
+
+export async function sendEmail({ to, subject, text, html, replyTo, fromName }: Mail) {
   const { error } = await client().emails.send({
-    from: env.emailFrom,
+    from: fromAs(fromName),
     to,
     subject,
     text,

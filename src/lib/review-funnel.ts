@@ -43,6 +43,7 @@ export async function savePrivateFeedback({ job, c, customerName }: FunnelData, 
   const stars = job.rating ? `${job.rating}/5 stars` : "no rating";
   await db().from("contact_notes").insert({ client_id: c.id, contact_id: job.contact_id, body: `Private feedback from the review page (${stars}):\n${body}` });
   await bumpConversation(job.contact_id, `Feedback (${stars}): ${body}`, "inbound", true);
+  await createRescueTask(c.id, job.contact_id, customerName, job.rating, body, job.id);
   await notifyClient(job.client_id, {
     title: `Feedback from ${customerName ?? "a customer"} (${stars})`,
     body: body.slice(0, 140),
@@ -56,4 +57,26 @@ export async function loadClientBySlug(slug: string): Promise<Client | null> {
   if (!/^[0-9a-f]{10}$/.test(slug)) return null;
   const { data } = await db().from("clients").select("*").eq("review_slug", slug).maybeSingle<Client>();
   return data;
+}
+
+/**
+ * A low rating becomes a "call them" task due within the hour, so the owner rings while it's fresh.
+ * Once it's sorted, the customer page offers to ask them for a review again.
+ */
+export async function createRescueTask(clientId: string, contactId: string, customerName: string | null, rating: number | null, feedback?: string, jobId?: string) {
+  const who = customerName?.trim().split(/\s+/)[0] || "this customer";
+  const title = `Call ${who} to put things right${rating ? ` (${rating}★)` : ""}${feedback ? `: "${feedback.slice(0, 90)}${feedback.length > 90 ? "…" : ""}"` : ""}`;
+  if (jobId) {
+    const { data: job } = await db().from("jobs").select("rescue_task_id").eq("id", jobId).maybeSingle<{ rescue_task_id: string | null }>();
+    if (job?.rescue_task_id) {
+      await db().from("contact_tasks").update({ title }).eq("id", job.rescue_task_id).is("done_at", null);
+      return;
+    }
+  }
+  const { data: task } = await db()
+    .from("contact_tasks")
+    .insert({ client_id: clientId, contact_id: contactId, title, due_at: new Date(Date.now() + 60 * 60_000).toISOString() })
+    .select("id")
+    .single<{ id: string }>();
+  if (jobId && task) await db().from("jobs").update({ rescue_task_id: task.id }).eq("id", jobId);
 }

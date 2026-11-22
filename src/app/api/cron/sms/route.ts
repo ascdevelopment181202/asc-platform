@@ -2,10 +2,15 @@ import { env } from "@/lib/env";
 import { db, type Client } from "@/lib/supabase";
 import { clientLabel, once } from "@/lib/clients";
 import { notifyAdmin } from "@/lib/email";
-import { inSendingWindow, reviewText, sendSms, type Contact, type Job } from "@/lib/sms";
+import { firstNameOf, inSendingWindow, reviewText, sendSms, type Contact, type Job } from "@/lib/sms";
 import { whenLabel, zonedParts, type Appointment } from "@/lib/crm";
 import { notifyClient } from "@/lib/push";
-import { syncReviews } from "@/lib/google-reviews";
+import { postDueAutoReplies, syncReviews } from "@/lib/google-reviews";
+import { queueEndedBookings } from "@/lib/review-autopilot";
+import { todaysCustomers } from "@/lib/today";
+import { emailReviewRequest } from "@/lib/review-email";
+import { a2pStatus } from "@/lib/twilio";
+import { weeklyReviewDigest } from "@/lib/weekly-reviews";
 import { googleEnabled } from "@/lib/env";
 import { displayPhone } from "@/lib/phone";
 
@@ -51,9 +56,18 @@ export async function GET(request: Request) {
     return clients.get(id)!;
   };
 
+  // US numbers can't text until their A2P registration is approved: check once per client per run.
+  const usReady = new Map<string, boolean>();
+  const canText = async (c: Client) => {
+    if (!c.sms_enabled || !c.twilio_number) return false;
+    if (c.country !== "US") return true;
+    if (!usReady.has(c.id)) usReady.set(c.id, c.messaging_service_sid ? (await a2pStatus(c.messaging_service_sid)).includes("verified") : false);
+    return usReady.get(c.id)!;
+  };
+
   for (const m of due ?? []) {
     const c = await getClient(m.client_id);
-    if (!c || !c.sms_enabled || !c.google_review_url || !c.twilio_number) {
+    if (!c || !c.google_review_url) {
       skipped.push(`${m.id}: client not set up`);
       continue; // Leave it queued; it goes out once the client is switched on.
     }
@@ -63,9 +77,17 @@ export async function GET(request: Request) {
     const { data: contact } = job
       ? await db().from("contacts").select("*").eq("id", job.contact_id).maybeSingle<Contact>()
       : { data: null };
-    if (!job || !contact || job.cancelled_at || job.review_clicked_at || contact.opted_out_at) {
+    // Stale: a request that's been stuck for 3 weeks (texts not switched on yet) would land out of the blue.
+    const stale = now.getTime() - Date.parse(m.send_at) > 21 * DAY;
+    if (!job || !contact || job.cancelled_at || job.review_clicked_at || contact.opted_out_at || stale) {
       await db().from("review_messages").update({ cancelled_at: now.toISOString() }).eq("id", m.id);
-      skipped.push(`${m.id}: stopped`);
+      skipped.push(`${m.id}: ${stale ? "stale" : "stopped"}`);
+      continue;
+    }
+
+    const texting = await canText(c);
+    if (!texting && !contact.email) {
+      skipped.push(`${m.id}: waiting for texts to be switched on`);
       continue;
     }
 
@@ -78,10 +100,51 @@ export async function GET(request: Request) {
       .select("id");
     if (!claimed?.length) continue;
 
-    const result = await sendSms({ client: c, to: contact.phone, body: reviewText(c, contact, job, m.step), kind: "review", contactId: contact.id });
-    if (result.logId) await db().from("review_messages").update({ sms_log_id: result.logId }).eq("id", m.id);
-    (result.ok ? sent : skipped).push(`${clientLabel(c)} step ${m.step}${result.ok ? "" : `: ${result.error}`}`);
+    let ok = false;
+    let error = "";
+    if (texting) {
+      const result = await sendSms({ client: c, to: contact.phone, body: reviewText(c, contact, job, m.step), kind: "review", contactId: contact.id });
+      if (result.logId) await db().from("review_messages").update({ sms_log_id: result.logId }).eq("id", m.id);
+      ok = result.ok;
+      error = result.ok ? "" : result.error;
+    }
+    // Email when we can't text, or as a fallback when the text fails.
+    if (!ok && contact.email) {
+      try {
+        await emailReviewRequest(c, contact, job, m.step);
+        await db().from("review_messages").update({ channel: "email" }).eq("id", m.id);
+        ok = true;
+      } catch (err) {
+        error = `${error ? `${error}; ` : ""}email: ${err instanceof Error ? err.message : err}`;
+      }
+    }
+    (ok ? sent : skipped).push(`${clientLabel(c)} step ${m.step}${ok ? "" : `: ${error}`}`);
   }
+
+  // One-off texts waiting for the sending window (referral thank-yous).
+  const { data: outbox } = await db()
+    .from("outbox")
+    .select("*, contacts(phone, opted_out_at)")
+    .is("sent_at", null)
+    .is("cancelled_at", null)
+    .lte("send_at", now.toISOString())
+    .limit(50)
+    .returns<{ id: string; client_id: string; contact_id: string; body: string; send_at: string; contacts: { phone: string; opted_out_at: string | null } | null }[]>();
+  for (const o of outbox ?? []) {
+    const c = await getClient(o.client_id);
+    if (!c || !inSendingWindow(c, now)) continue;
+    if (!o.contacts || o.contacts.opted_out_at || now.getTime() - Date.parse(o.send_at) > 3 * DAY || !(await canText(c))) {
+      await db().from("outbox").update({ cancelled_at: now.toISOString() }).eq("id", o.id);
+      continue;
+    }
+    const { data: claimed } = await db().from("outbox").update({ sent_at: now.toISOString() }).eq("id", o.id).is("sent_at", null).select("id");
+    if (!claimed?.length) continue;
+    const r = await sendSms({ client: c, to: o.contacts.phone, body: o.body, kind: "manual", contactId: o.contact_id });
+    (r.ok ? sent : skipped).push(`outbox ${clientLabel(c)}${r.ok ? "" : `: ${r.error}`}`);
+  }
+
+  // Bookings that have just ended: queue a review request (the owner can stop it from the notification).
+  sent.push(...(await queueEndedBookings(getClient, now).catch((err) => (skipped.push(`auto reviews: ${err instanceof Error ? err.message : err}`), []))));
 
   // Booking reminders: the day before (anything starting in the next 24 hours), inside 9am to 7pm.
   const { data: upcoming } = await db()
@@ -174,6 +237,8 @@ export async function GET(request: Request) {
     }
   }
 
+  if (googleEnabled()) sent.push(...(await postDueAutoReplies(getClient).catch((err) => [`auto replies: ${err instanceof Error ? err.message : err}`])));
+
   // Evening nudge at 6pm their time: "finished any jobs?", so review requests actually get sent.
   for (const c of active ?? []) {
     const tz = c.timezone || "Europe/London";
@@ -182,22 +247,18 @@ export async function GET(request: Request) {
     const workDays = c.business_hours?.days?.length ? c.business_hours.days : [1, 2, 3, 4, 5];
     if (!workDays.includes(local.weekday)) continue;
     await once(c.id, `review_nudge_${local.ymd}`, async () => {
-      const { data: appts } = await db()
-        .from("appointments")
-        .select("id, starts_at, contact_id, title, contacts(name, phone)")
-        .eq("client_id", c.id)
-        .eq("status", "booked")
-        .gte("starts_at", new Date(now.getTime() - DAY).toISOString())
-        .lte("starts_at", now.toISOString())
-        .returns<(Pick<Appointment, "id" | "starts_at" | "contact_id" | "title"> & { contacts: { name: string | null; phone: string } | null })[]>();
-      const today = (appts ?? []).filter((a) => zonedParts(new Date(a.starts_at), tz).ymd === local.ymd);
-      const names = today.map((a) => a.contacts?.name ?? (a.contacts ? displayPhone(a.contacts.phone) : a.title)).slice(0, 3);
+      const rows = (await todaysCustomers(c)).filter((r) => !r.asked);
       const isFriday = local.weekday === 5;
-      if (!today.length && !isFriday) return;
+      if (!rows.length && !isFriday) return;
       const app = `${env.appUrl}/m/${c.dashboard_token}`;
-      const msg = today.length
-        ? { title: "Finished today's jobs?", body: `Tap to mark ${names.join(", ")}${today.length > 3 ? " and others" : ""} as done and we'll ask for a Google review.`, url: `/m/${c.dashboard_token}/calendar` }
-        : { title: "Any jobs finished this week?", body: "Tap Job done for each one and we'll ask them for a Google review.", url: `/m/${c.dashboard_token}/reviews` };
+      const names = rows.map((r) => firstNameOf(r.contact.name) ?? displayPhone(r.contact.phone)).slice(0, 3);
+      const msg = rows.length
+        ? {
+            title: "Finished today's jobs?",
+            body: `One tap to ask ${names.join(", ")}${rows.length > 3 ? ` and ${rows.length - 3} more` : ""} for a Google review.`,
+            url: `/m/${c.dashboard_token}/today`,
+          }
+        : { title: "Any jobs finished this week?", body: "Tap to ask your customers for a Google review. It takes seconds.", url: `/m/${c.dashboard_token}/today` };
       const { count } = await db().from("push_subscriptions").select("id", { count: "exact", head: true }).eq("client_id", c.id);
       if (count) await notifyClient(c.id, msg);
       else if (c.owner_mobile && c.country !== "US") {
@@ -205,6 +266,16 @@ export async function GET(request: Request) {
         await sendSms({ client: c, to: c.owner_mobile, kind: "owner_confirm", body: `${msg.title} ${msg.body.replace("Tap", "Open your app")} ${app}${msg.url.replace(`/m/${c.dashboard_token}`, "")}` });
       }
     }).catch((err) => skipped.push(`review nudge ${clientLabel(c)}: ${err instanceof Error ? err.message : err}`));
+  }
+
+  // Monday 9am their time: last week's reviews and how close they are to their competitor.
+  const { data: reviewClients } = await db().from("clients").select("*").neq("status", "cancelled").or("gbp_location.not.is.null,google_review_url.not.is.null").returns<Client[]>();
+  for (const c of reviewClients ?? []) {
+    const local = zonedParts(now, c.timezone || "Europe/London");
+    if (local.weekday !== 1 || local.hm < "09:00" || local.hm >= "09:10") continue;
+    await once(c.id, `weekly_reviews_${local.ymd}`, async () => {
+      sent.push(await weeklyReviewDigest(c));
+    }).catch((err) => skipped.push(`weekly reviews ${clientLabel(c)}: ${err instanceof Error ? err.message : err}`));
   }
 
   return Response.json({ ok: true, sent, skipped });

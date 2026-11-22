@@ -18,6 +18,7 @@ export default async function More({ params }: { params: Promise<{ token: string
   const [unread, publicKey] = await Promise.all([unreadTotal(c.id), vapidPublicKey()]);
   const items: { href: string; icon: string; title: string; sub: string }[] = [
     { href: `/m/${token}/docs`, icon: c.country === "US" ? "💵" : "💷", title: "Quotes and invoices", sub: "Create, send by text, see what's owed" },
+    { href: `/m/${token}/today`, icon: "✨", title: "Today's customers", sub: "One tap to ask each of them for a review" },
     { href: `/m/${token}/tasks`, icon: "✅", title: "Tasks and follow-ups", sub: "Call-backs and chasers, with reminders" },
     { href: `/m/${token}/reviews`, icon: "⭐", title: "Reviews", sub: "Your Google reviews, replies, review requests" },
     { href: `/m/${token}/contacts/import`, icon: "📥", title: "Import customers", sub: "From a spreadsheet, job software or your phone" },

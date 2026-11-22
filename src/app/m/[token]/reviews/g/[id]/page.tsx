@@ -5,7 +5,7 @@ import { localeFor } from "@/lib/phone";
 import { suggestReply, type GoogleReview } from "@/lib/google-reviews";
 import { fullWhen, loadClient, unreadTotal } from "../../../data";
 import { AppShell, Flash, field, primaryBtn } from "../../../ui";
-import { postReply } from "../../google-actions";
+import { cancelAutoReply, postReply } from "../../google-actions";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +17,7 @@ export default async function GoogleReviewPage({ params, searchParams }: { param
   const { data: rv } = await db().from("google_reviews").select("*, contacts(name)").eq("client_id", c.id).eq("id", id).maybeSingle<GoogleReview & { contacts: { name: string | null } | null }>();
   if (!rv) notFound();
   if (!rv.seen_at) await db().from("google_reviews").update({ seen_at: new Date().toISOString() }).eq("id", rv.id);
-  const [unread, draft] = await Promise.all([unreadTotal(c.id), rv.reply ? Promise.resolve(rv.reply) : suggestReply(c, rv)]);
+  const [unread, draft] = await Promise.all([unreadTotal(c.id), rv.reply ? Promise.resolve(rv.reply) : rv.draft_reply ? Promise.resolve(rv.draft_reply) : suggestReply(c, rv)]);
   const tz = c.timezone || "Europe/London";
 
   return (
@@ -42,6 +42,16 @@ export default async function GoogleReviewPage({ params, searchParams }: { param
           <p className="mt-0.5 text-sm text-neutral-600">
             {rv.reply ? "Everyone can see this. Change it and post again to update it." : "Replying to every review helps you rank higher. We've written one for you, change anything you like."}
           </p>
+          {!rv.reply && rv.auto_reply_at && (
+            <div className="mt-2 flex items-center justify-between gap-2 rounded-xl bg-green-50 p-3 text-sm text-green-900">
+              <span>We&apos;ll post this for you {fullWhen(rv.auto_reply_at, tz, localeFor(c.country))}, unless you change it.</span>
+              <form action={cancelAutoReply}>
+                <input type="hidden" name="token" value={token} />
+                <input type="hidden" name="id" value={rv.id} />
+                <button className="shrink-0 text-xs font-medium underline">Don&apos;t</button>
+              </form>
+            </div>
+          )}
           <form action={postReply} className="mt-3 space-y-2">
             <input type="hidden" name="token" value={token} />
             <input type="hidden" name="id" value={rv.id} />

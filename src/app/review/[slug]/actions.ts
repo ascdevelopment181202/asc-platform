@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { after } from "next/server";
 import { db } from "@/lib/supabase";
 import { notifyClient } from "@/lib/push";
-import { loadClientBySlug } from "@/lib/review-funnel";
+import { createRescueTask, loadClientBySlug } from "@/lib/review-funnel";
 import { isTextable, normalizePhone } from "@/lib/phone";
 import { bumpConversation, countryOf, upsertContact } from "@/lib/sms";
 
@@ -40,6 +40,7 @@ export async function feedbackShared(formData: FormData) {
   if (contact) {
     await db().from("contact_notes").insert({ client_id: c.id, contact_id: contact.id, body: `Private feedback from your review page (${stars}):\n${message}` });
     await bumpConversation(contact.id, `Feedback (${stars}): ${message}`, "inbound", true);
+    if ((rating ?? 3) <= 3) await createRescueTask(c.id, contact.id, contact.name, rating, message);
   }
   await notifyClient(c.id, {
     title: `Feedback from ${name || "a customer"} (${stars})`,

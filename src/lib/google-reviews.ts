@@ -4,6 +4,7 @@ import { gapi } from "@/lib/google";
 import { googleEnabled } from "@/lib/env";
 import { notifyClient } from "@/lib/push";
 import { clientLabel } from "@/lib/clients";
+import { queueReferral } from "@/lib/referral";
 
 // Reviews still live on the v4 My Business API (the newer APIs don't cover them).
 const V4 = "https://mybusiness.googleapis.com/v4";
@@ -33,6 +34,8 @@ export type GoogleReview = {
   contact_id: string | null;
   job_id: string | null;
   seen_at: string | null;
+  draft_reply: string | null;
+  auto_reply_at: string | null;
 };
 
 /** Google adds "(Translated by Google)" blocks; keep the reviewer's own words. */
@@ -105,6 +108,11 @@ export async function syncReviews(c: Client): Promise<{ added: number }> {
   for (const rv of fresh) {
     const { data: saved } = await db().from("google_reviews").select("*").eq("client_id", c.id).eq("google_review_id", rv.google_review_id).single<GoogleReview>();
     if (saved) await matchToCustomer(c, saved);
+    // Good reviews get a reply posted automatically after a day, unless the owner writes their own first.
+    if (saved && c.review_auto_reply && (saved.rating ?? 0) >= 4 && !saved.reply) {
+      const draft = await suggestReply(c, saved);
+      await db().from("google_reviews").update({ draft_reply: draft, auto_reply_at: new Date(Date.now() + 24 * 3600_000).toISOString() }).eq("id", saved.id);
+    }
     await notifyClient(c.id, {
       title: `${rv.rating ? "⭐".repeat(rv.rating) : "New review"} from ${rv.reviewer_name ?? "a customer"}`,
       body: rv.rating && rv.rating <= 3 ? "A lower rating on Google. Tap to read it and reply." : `${rv.comment ? `"${rv.comment.slice(0, 100)}"` : "New Google review."} Tap to reply.`,
@@ -139,6 +147,7 @@ async function matchToCustomer(c: Client, rv: GoogleReview) {
   await db()
     .from("contact_notes")
     .insert({ client_id: c.id, contact_id: match.contact_id, body: `Left a ${rv.rating ?? ""}★ Google review${rv.comment ? `: "${rv.comment.slice(0, 300)}"` : "."}` });
+  if (rv.rating === 5) await queueReferral(c, match.id);
 }
 
 /** Posts (or updates) the business's public reply on Google. */
@@ -180,4 +189,29 @@ export async function suggestReply(c: Client, rv: GoogleReview): Promise<string>
   } catch {
     return fallback;
   }
+}
+
+/** Posts the queued replies to good reviews whose day has passed. */
+export async function postDueAutoReplies(getClient: (id: string) => Promise<Client | null>) {
+  const out: string[] = [];
+  const { data: due } = await db()
+    .from("google_reviews")
+    .select("*")
+    .is("reply", null)
+    .not("auto_reply_at", "is", null)
+    .lte("auto_reply_at", new Date().toISOString())
+    .limit(20)
+    .returns<GoogleReview[]>();
+  for (const rv of due ?? []) {
+    await db().from("google_reviews").update({ auto_reply_at: null }).eq("id", rv.id);
+    const c = await getClient(rv.client_id);
+    if (!c || !c.review_auto_reply || !rv.draft_reply) continue;
+    try {
+      await replyToReview(c, rv, rv.draft_reply);
+      out.push(`auto-replied to ${rv.reviewer_name ?? "review"} for ${clientLabel(c)}`);
+    } catch (err) {
+      out.push(`auto-reply failed for ${clientLabel(c)}: ${err instanceof Error ? err.message : err}`);
+    }
+  }
+  return out;
 }

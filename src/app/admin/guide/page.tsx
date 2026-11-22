@@ -237,6 +237,13 @@ export default async function Guide() {
         <ul>
           <li>Missed call: text back within seconds (open-hours or closed version), notification to the client, conversation in their inbox.</li>
           <li>Review requests: 2 hours after Job done, then reminders at 4 and 14 days, only between 9am and 7pm. They stop as soon as the customer rates, replies or opts out.</li>
+          <li>Review autopilot: when a booking ends, a personal review text (&ldquo;it&apos;s Paul from P.I.C, thanks for choosing us for the driveway clean&rdquo;) is queued for 2 hours later, and the owner gets a notification to stop it if the job isn&apos;t done. Also triggered by Job done, Mark as paid, the Today list and the job-software link.</li>
+          <li>6pm on work days: one notification listing today&apos;s customers, one tap each to ask. Fridays even if it was quiet.</li>
+          <li>Email instead of text when the customer has an email and we can&apos;t text (US before registration, or a failed text).</li>
+          <li>1 to 3 stars: a &ldquo;call them to put it right&rdquo; task due within the hour, then an &ldquo;ask again&rdquo; button once it&apos;s sorted.</li>
+          <li>5 stars: a thank-you text a few hours later asking for referrals.</li>
+          <li>Google reviews: checked every 30 minutes, new ones pinged to the owner, 4 to 5 stars replied to automatically after a day, 5 star reviews shown on their website.</li>
+          <li>Monday 9am: last week&apos;s reviews and how close they are to their competitor.</li>
           <li>Booking reminders: the day before each appointment.</li>
           <li>Onboarding chasers: 24h and 48h emails to the client, an email to you at 72h.</li>
           <li>Build deadline alerts: 12 hours before and when overdue.</li>
