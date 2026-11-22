@@ -135,8 +135,12 @@ export async function buyUkMobileNumber(friendlyName: string): Promise<Bought> {
  */
 export async function buyUsLocalNumber(friendlyName: string, nearNumber?: string | null): Promise<Bought & { messagingServiceSid: string }> {
   const areaCode = nearNumber?.match(/^\+1(\d{3})/)?.[1];
-  let candidates = areaCode ? await available(`/AvailablePhoneNumbers/US/Local.json?SmsEnabled=true&VoiceEnabled=true&AreaCode=${areaCode}&PageSize=10`) : [];
-  if (!candidates.length) candidates = await available(`/AvailablePhoneNumbers/US/Local.json?SmsEnabled=true&VoiceEnabled=true&PageSize=10`);
+  const base = "/AvailablePhoneNumbers/US/Local.json?SmsEnabled=true&VoiceEnabled=true&PageSize=10";
+  // Same area code first, then anything within ~100 miles of their own number (overlay codes like 984 for 919),
+  // and only then anywhere in the US, so customers see a local number.
+  let candidates = areaCode ? await available(`${base}&AreaCode=${areaCode}`) : [];
+  if (!candidates.length && nearNumber) candidates = await available(`${base}&NearNumber=${encodeURIComponent(nearNumber)}&Distance=100`);
+  if (!candidates.length) candidates = await available(base);
   if (!candidates.length) throw new Error("No US numbers available right now");
 
   let bought: Bought | null = null;
