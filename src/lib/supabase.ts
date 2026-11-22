@@ -69,6 +69,16 @@ export type Client = {
   reviews_synced_at: string | null;
   google_rating: number | null;
   google_review_count: number | null;
+  // Review autopilot
+  auto_review_after_booking: boolean; // ask automatically once a booking ends, unless the owner stops it
+  review_auto_reply: boolean; // post the suggested reply to 4 to 5 star Google reviews after a day
+  referral_ask: boolean; // after a 5 star rating, a thank-you text asking for referrals
+  sender_name: string | null; // "Paul" in "it's Paul from P.I.C"
+  intake_token: string; // job-software webhook: /api/intake/<intake_token>
+  competitor_name: string | null;
+  competitor_place_id: string | null;
+  competitor_rating: number | null;
+  competitor_review_count: number | null;
 };
 
 /** What goes on a client's quotes and invoices, and how their customers pay. */

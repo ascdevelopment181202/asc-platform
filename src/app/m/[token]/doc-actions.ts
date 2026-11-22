@@ -92,7 +92,7 @@ export async function markPaid(f: FormData) {
   if (contact) await setStage(contact, "paid");
   // Getting paid means the job's finished: ask for a review unless they untick it.
   if (contact && f.get("review") === "on") {
-    const result = await createJob(c, { phone: contact.phone, name: contact.name, source: "dashboard" });
+    const result = await createJob(c, { phone: contact.phone, name: contact.name, source: "dashboard", label: doc.items?.[0]?.description });
     if (result.ok) back(page, "ok", "Marked as paid. Review request goes out in about 2 hours.");
   }
   back(page, "ok", "Marked as paid.");

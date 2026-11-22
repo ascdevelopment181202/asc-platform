@@ -4,7 +4,8 @@ import { redirect } from "next/navigation";
 import { after } from "next/server";
 import { db } from "@/lib/supabase";
 import { notifyClient } from "@/lib/push";
-import { loadFunnel, recordGoogleClick, savePrivateFeedback, stopReminders } from "@/lib/review-funnel";
+import { createRescueTask, loadFunnel, recordGoogleClick, savePrivateFeedback, stopReminders } from "@/lib/review-funnel";
+import { queueReferral } from "@/lib/referral";
 
 /**
  * Star rating from the review page. 4 or 5 stars go straight on to Google;
@@ -21,6 +22,7 @@ export async function rate(formData: FormData) {
   await stopReminders(job.id);
 
   if (rating >= 4) {
+    if (rating === 5) after(() => queueReferral(c, job.id));
     if (c.google_review_url) {
       await recordGoogleClick(data, rating);
       redirect(c.google_review_url);
@@ -28,7 +30,8 @@ export async function rate(formData: FormData) {
     redirect(`/v/${token}?step=thanks`);
   }
 
-  // A low rating: tell the owner straight away so they can ring the customer.
+  // A low rating: tell the owner straight away so they can ring the customer, and put it on their task list.
+  after(() => createRescueTask(c.id, job.contact_id, customerName, rating, undefined, job.id));
   after(() =>
     notifyClient(job.client_id, {
       title: `${customerName ?? "A customer"} rated you ${rating}/5`,

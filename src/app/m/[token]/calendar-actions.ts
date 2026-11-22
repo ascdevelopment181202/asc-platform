@@ -1,5 +1,6 @@
 "use server";
 
+import { cancelBookingReview } from "@/lib/review-autopilot";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/supabase";
 import { clientLabel } from "@/lib/clients";
@@ -102,9 +103,9 @@ export async function updateAppointment(f: FormData) {
 
 export async function markAppointmentDone(f: FormData) {
   const { c, appt, contact, page } = await apptFromForm(f);
-  await db().from("appointments").update({ status: "done" }).eq("id", appt.id);
+  await db().from("appointments").update({ status: "done", review_queued_at: new Date().toISOString() }).eq("id", appt.id);
   if (contact && f.get("review") === "on") {
-    const result = await createJob(c, { phone: contact.phone, name: contact.name, source: "dashboard" });
+    const result = await createJob(c, { phone: contact.phone, name: contact.name, source: "dashboard", label: appt.title, appointmentId: appt.id });
     if (!result.ok) back(page, "err", `Marked as done. Review request not sent: ${result.error}`);
     back(page, "ok", "Marked as done. Review request goes out in about 2 hours.");
   }
@@ -115,6 +116,7 @@ export async function markAppointmentDone(f: FormData) {
 export async function cancelAppointment(f: FormData) {
   const { c, appt, contact, page } = await apptFromForm(f);
   await db().from("appointments").update({ status: "cancelled" }).eq("id", appt.id);
+  await cancelBookingReview(appt.id);
   if (contact && f.get("notify") === "on" && !contact.opted_out_at) {
     await sendSms({ client: c, to: contact.phone, kind: "manual", contactId: contact.id, body: `Hi ${firstName(contact.name)}, your booking with ${clientLabel(c)} on ${whenLabel(c, appt.starts_at)} has been cancelled. Reply to rearrange.` });
   }

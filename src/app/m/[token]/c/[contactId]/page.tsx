@@ -125,7 +125,7 @@ export default async function Thread({ params, searchParams }: Props) {
             <input type="hidden" name="token" value={token} />
             <input type="hidden" name="contactId" value={contact.id} />
             <input type="hidden" name="back" value={here} />
-            <button className="shrink-0 rounded-full bg-neutral-100 px-3 py-1.5">⭐ Ask for review</button>
+            <button className="shrink-0 rounded-full bg-green-600 px-3 py-1.5 text-white">✓ Job done, ask for review</button>
           </form>
           <Link href={`/m/${token}/calendar/new?contact=${contact.id}`} className="shrink-0 rounded-full bg-neutral-100 px-3 py-1.5">📅 Book</Link>
           <Link href={`/m/${token}/docs/new?kind=quote&contact=${contact.id}`} className="shrink-0 rounded-full bg-neutral-100 px-3 py-1.5">📝 Quote</Link>

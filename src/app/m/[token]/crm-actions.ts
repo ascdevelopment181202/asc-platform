@@ -207,7 +207,36 @@ export async function addTask(f: FormData) {
 export async function finishTask(f: FormData) {
   const c = await clientFromForm(f);
   const token = c.dashboard_token;
-  await db().from("contact_tasks").update({ done_at: new Date().toISOString() }).eq("client_id", c.id).eq("id", str(f, "taskId"));
+  const { data: task } = await db()
+    .from("contact_tasks")
+    .update({ done_at: new Date().toISOString() })
+    .eq("client_id", c.id)
+    .eq("id", str(f, "taskId"))
+    .select("contact_id, title")
+    .maybeSingle<{ contact_id: string | null; title: string }>();
   revalidatePath(`/m/${token}/tasks`);
+  // Finished a "put things right" call: take them to the customer, where they can ask again.
+  if (task?.contact_id && task.title.includes("put things right")) {
+    return back(`/m/${token}/contacts/${task.contact_id}`, "ok", "Nice one. If it's sorted, you can ask them for a review again below.");
+  }
   return back(safeBack(f, token, `/m/${token}/tasks`), "ok", "Done ✓");
+}
+
+/** One tap from the "Today's customers" list. */
+export async function askFromToday(f: FormData) {
+  const { c, contact } = await contactFromForm(f);
+  const to = safeBack(f, c.dashboard_token, `/m/${c.dashboard_token}/today`);
+  const result = await createJob(c, { phone: contact.phone, name: contact.name, source: "dashboard", label: str(f, "label") || null, appointmentId: str(f, "appointmentId") || null });
+  if (!result.ok) return back(to, "err", result.error);
+  if (str(f, "appointmentId")) await db().from("appointments").update({ review_queued_at: new Date().toISOString() }).eq("id", str(f, "appointmentId")).eq("client_id", c.id);
+  return back(to, "ok", `${contact.name?.split(/\s+/)[0] ?? "They"} will get a review request in about 2 hours.`);
+}
+
+/** Second ask after putting things right: one friendly text, outside the 6-month rule. */
+export async function reaskReview(f: FormData) {
+  const { c, contact } = await contactFromForm(f);
+  const to = safeBack(f, c.dashboard_token, `/m/${c.dashboard_token}/contacts/${contact.id}`);
+  const result = await createJob(c, { phone: contact.phone, name: contact.name, source: "reask", startAt: new Date(Date.now() + 10 * 60_000) });
+  if (!result.ok) return back(to, "err", result.error);
+  return back(to, "ok", "Done. We'll send a short, friendly text asking again.");
 }

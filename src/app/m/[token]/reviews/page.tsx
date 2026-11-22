@@ -9,7 +9,7 @@ import { ShareLink } from "./share-link";
 import { env } from "@/lib/env";
 import { brandOf } from "@/lib/brand";
 import type { GoogleReview } from "@/lib/google-reviews";
-import { refreshReviews } from "./google-actions";
+import { refreshReviews, toggleAutoReview } from "./google-actions";
 
 export const dynamic = "force-dynamic";
 
@@ -87,7 +87,7 @@ export default async function Reviews({ params, searchParams }: { params: Promis
                       </p>
                       <p className="line-clamp-2 text-sm text-neutral-600">{r.comment ?? "Rating only"}</p>
                     </div>
-                    <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-medium ${r.reply ? "bg-neutral-100 text-neutral-600" : "bg-blue-50 text-blue-800"}`}>{r.reply ? "Replied" : "Reply"}</span>
+                    <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-medium ${r.reply ? "bg-neutral-100 text-neutral-600" : "bg-blue-50 text-blue-800"}`}>{r.reply ? "Replied" : r.auto_reply_at ? "Reply queued" : "Reply"}</span>
                   </Link>
                 </li>
               ))}
@@ -99,14 +99,35 @@ export default async function Reviews({ params, searchParams }: { params: Promis
         <section className="rounded-2xl bg-white p-4 shadow-sm">
           <h2 className="text-lg font-semibold">Finished a job?</h2>
           <p className="mt-0.5 text-sm text-neutral-600">We&apos;ll text your customer asking for a Google review.</p>
+          <Link href={`/m/${token}/reviews/qr`} className="mt-3 flex items-center gap-3 rounded-xl bg-neutral-900 px-4 py-3 text-white active:bg-neutral-800">
+            <span className="text-2xl" aria-hidden>📱</span>
+            <span className="min-w-0 flex-1">
+              <span className="block font-semibold">Still with the customer? Show them the QR</span>
+              <span className="block text-xs text-neutral-300">They scan it and leave a review there and then. Asking in person works best.</span>
+            </span>
+          </Link>
+          <Link href={`/m/${token}/today`} className="mt-3 flex items-center justify-between rounded-xl bg-blue-50 px-4 py-3 text-sm font-medium text-blue-900 active:bg-blue-100">
+            <span>Pick from today&apos;s customers, one tap each</span>
+            <span>→</span>
+          </Link>
           <form action={jobDone} className="mt-3 space-y-2">
             <input type="hidden" name="token" value={token} />
             <input name="name" placeholder="Customer's first name" autoComplete="off" className="w-full rounded-xl border border-neutral-300 px-4 py-3 text-base" />
             <input name="phone" type="tel" inputMode="tel" placeholder={c.country === "US" ? "Their cell number" : "Their mobile (07...)"} required autoComplete="off" className="w-full rounded-xl border border-neutral-300 px-4 py-3 text-base" />
+            <input name="job" placeholder="What was the job? (optional, e.g. boiler service)" autoComplete="off" className="w-full rounded-xl border border-neutral-300 px-4 py-3 text-base" />
+            {c.country === "US" && <input name="email" type="email" placeholder="Their email (optional, we'll email if we can't text)" autoComplete="off" className="w-full rounded-xl border border-neutral-300 px-4 py-3 text-base" />}
             <button className="w-full rounded-xl bg-[#2a78d6] px-4 py-3.5 text-base font-semibold text-white active:bg-[#1f62b3]">Job done, ask for a review</button>
           </form>
+          <form action={toggleAutoReview} className="mt-3 flex items-center justify-between gap-3 rounded-xl bg-neutral-50 p-3">
+            <input type="hidden" name="token" value={token} />
+            <span className="text-sm">
+              <strong>Ask automatically when a booking ends</strong>
+              <span className="block text-xs text-neutral-500">{c.auto_review_after_booking ? "On. We'll message you first so you can stop it." : "Off. You'll need to press Job done."}</span>
+            </span>
+            <button className={`shrink-0 rounded-full px-3 py-1.5 text-sm font-semibold ${c.auto_review_after_booking ? "bg-green-600 text-white" : "bg-neutral-200 text-neutral-700"}`}>{c.auto_review_after_booking ? "On" : "Off"}</button>
+          </form>
           <p className="mt-3 text-xs text-neutral-500">
-            It also happens automatically when you mark a booking as done, move a customer to Job done, or mark their invoice as paid. Each customer is asked once at most every 6 months. We&apos;ll remind you at 6pm on days you had bookings, and every Friday.
+            It also happens when you mark a booking as done, move a customer to Job done, or mark their invoice as paid. Each customer is asked once at most every 6 months. We&apos;ll remind you at 6pm on days you had bookings, and every Friday.
           </p>
           {c.twilio_number && (
             <p className="mt-2 text-xs text-neutral-500">
@@ -122,6 +143,7 @@ export default async function Reviews({ params, searchParams }: { params: Promis
           </p>
           {!c.google_review_url && <p className="mt-2 rounded-lg bg-amber-50 p-2 text-sm text-amber-900">Your Google review link isn&apos;t set yet. ASC will add it.</p>}
           <ShareLink url={`${env.appUrl}/review/${c.review_slug}`} business={brandOf(c).name} />
+          <Link href={`/m/${token}/reviews/qr/print`} className="mt-2 block text-center text-sm font-medium text-[#2a78d6]">Print review cards or a van sticker →</Link>
         </section>
 
         <section className="rounded-2xl bg-white shadow-sm">
@@ -134,7 +156,7 @@ export default async function Reviews({ params, searchParams }: { params: Promis
                 const s = jobStatus(j);
                 return (
                   <li key={j.id}>
-                    <Link href={`/m/${token}/c/${j.contact_id}`} className="flex items-center justify-between gap-3 px-4 py-3 active:bg-neutral-50">
+                    <Link href={`/m/${token}/reviews/job/${j.id}`} className="flex items-center justify-between gap-3 px-4 py-3 active:bg-neutral-50">
                       <div className="min-w-0">
                         <p className="truncate font-medium">{j.contacts?.name ?? displayPhone(j.contacts?.phone)}</p>
                         <p className="text-xs text-neutral-500">{shortWhen(j.created_at, tz, localeFor(c.country))}{j.source === "bulk" ? " · past customer" : ""}</p>

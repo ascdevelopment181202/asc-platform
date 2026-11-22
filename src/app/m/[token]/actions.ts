@@ -76,11 +76,14 @@ export async function startConversation(formData: FormData) {
 
 export async function jobDone(formData: FormData) {
   const c = await clientFor(formData);
-  const page = `/m/${c.dashboard_token}/reviews`;
+  const b = String(formData.get("back") ?? "");
+  const page = b.startsWith(`/m/${c.dashboard_token}`) ? b : `/m/${c.dashboard_token}/reviews`;
   const result = await createJob(c, {
     phone: String(formData.get("phone") ?? ""),
     name: String(formData.get("name") ?? "").trim() || null,
     source: "dashboard",
+    label: String(formData.get("job") ?? "").trim() || null,
+    email: String(formData.get("email") ?? "").trim() || null,
   });
   if (!result.ok) back(page, "err", result.error);
   else back(page, "ok", `Done. ${result.contact.name ?? "Your customer"} will get a review request in about 2 hours.`);

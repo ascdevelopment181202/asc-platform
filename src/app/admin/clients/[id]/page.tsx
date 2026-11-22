@@ -19,7 +19,7 @@ import { resendPhoneWelcome, saveSmsSettings, sendTestText, setUpPhone } from ".
 import { countryOf, EMERGENCY_AFTER_HOURS, TEMPLATE_HELP, templatesFor } from "@/lib/sms";
 import { displayUk, forwardingCodes } from "@/lib/phone";
 import { a2pStatus } from "@/lib/twilio";
-import { saveBranding, saveReviewLocation } from "../../brand-actions";
+import { saveAutopilot, saveBranding, saveCompetitor, saveReviewLocation } from "../../brand-actions";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -224,6 +224,52 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
               </Card>
             );
           })()}
+
+          <Card title="Review autopilot">
+            <div className="space-y-4 text-sm">
+              <form action={saveAutopilot} className="space-y-2">
+                <input type="hidden" name="clientId" value={c.id} />
+                <label className="flex items-start gap-2"><input type="checkbox" name="auto_review_after_booking" defaultChecked={c.auto_review_after_booking} className="mt-0.5" /><span><strong>Ask automatically when a booking ends.</strong> Queued for 2 hours later, and the owner gets a notification to stop it if the job isn&apos;t done.</span></label>
+                <label className="flex items-start gap-2"><input type="checkbox" name="review_auto_reply" defaultChecked={c.review_auto_reply} className="mt-0.5" /><span><strong>Reply to 4 to 5 star Google reviews automatically</strong> after a day, unless the owner writes their own. Low ratings always wait for the owner.</span></label>
+                <label className="flex items-start gap-2"><input type="checkbox" name="referral_ask" defaultChecked={c.referral_ask} className="mt-0.5" /><span><strong>Ask for referrals after 5 stars.</strong> One thank-you text a few hours later.</span></label>
+                <label className="block">
+                  <span className="text-neutral-600">Name in texts (&ldquo;it&apos;s <em>Paul</em> from {clientLabel(c)}&rdquo;)</span>
+                  <input name="sender_name" defaultValue={c.sender_name ?? ""} placeholder={c.first_name ?? "First name"} className={input} />
+                </label>
+                <button className={btnQuiet}>Save</button>
+              </form>
+
+              <div>
+                <p className="font-medium">Job software link</p>
+                <p className="text-neutral-600">If they run jobs in Jobber, Tradify, ServiceM8, Xero or QuickBooks, a Zap sends each finished job here and we ask for the review. Nothing to do in our app.</p>
+                <code className="mt-1 block break-all rounded bg-neutral-100 p-2 text-xs">{`${env.appUrl}/api/intake/${c.intake_token}`}</code>
+                <ol className="mt-1 list-decimal space-y-0.5 pl-5 text-xs text-neutral-600">
+                  <li>In Zapier: trigger = their software&apos;s &ldquo;Job completed&rdquo; or &ldquo;Invoice paid&rdquo;.</li>
+                  <li>Action = Webhooks by Zapier, POST, to the link above, payload type JSON.</li>
+                  <li>Data: <code>name</code>, <code>phone</code> (mobile), <code>email</code>, <code>job</code> (job title or first invoice line).</li>
+                  <li>Test it: the owner gets a &ldquo;Review request queued&rdquo; notification and can stop it.</li>
+                </ol>
+              </div>
+
+              <form action={saveCompetitor} className="space-y-2">
+                <input type="hidden" name="clientId" value={c.id} />
+                <p className="font-medium">Competitor to beat (shown in their Monday update)</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <input name="competitor_name" defaultValue={c.competitor_name ?? ""} placeholder="Business name" className={input} />
+                  {process.env.GOOGLE_PLACES_API_KEY ? (
+                    <input name="town" placeholder="Town (to find it on Google)" className={input} />
+                  ) : (
+                    <div className="grid grid-cols-2 gap-2">
+                      <input name="competitor_rating" defaultValue={c.competitor_rating ?? ""} placeholder="Rating, 4.8" className={input} />
+                      <input name="competitor_review_count" defaultValue={c.competitor_review_count ?? ""} placeholder="Reviews, 65" className={input} />
+                    </div>
+                  )}
+                </div>
+                {!process.env.GOOGLE_PLACES_API_KEY && <p className="text-xs text-neutral-500">Type their rating and review count from Google. Add a GOOGLE_PLACES_API_KEY in Vercel and it&apos;ll find them and update every week.</p>}
+                <button className={btnQuiet}>Save competitor</button>
+              </form>
+            </div>
+          </Card>
 
           <Card title="Reviews and invoices">
             <div className="space-y-4 text-sm">
