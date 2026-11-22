@@ -446,7 +446,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
                 <input type="checkbox" name="forward_replies" defaultChecked={c.forward_replies} /> Also text new customer messages to the owner&apos;s phone
               </label>
               <label className="flex items-center gap-2">
-                <input type="checkbox" name="sms_enabled" defaultChecked={c.sms_enabled} /> Texts switched on
+                <input type="checkbox" name="sms_enabled" defaultChecked={c.sms_enabled} disabled={!c.twilio_number} /> Texts switched on{!c.twilio_number && " (switches on when you set up their phone)"}
               </label>
               <button className={`${btn} w-full`}>Save</button>
             </form>
