@@ -31,7 +31,7 @@ const SKIP_NOTE: Record<string, string> = {
   opted_out: "no text, opted out",
   sms_disabled: "no text, texts off",
   send_failed: "auto-text failed",
-  active_conversation: "no auto-text, you're already chatting",
+  active_conversation: "no auto-text, they texted you today",
   undeliverable: "no text, this number can't get texts",
 };
 

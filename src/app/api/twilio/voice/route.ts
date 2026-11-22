@@ -36,11 +36,7 @@ export async function POST(request: Request) {
     contactId = contact.id;
     if (contact.opted_out_at) skipped = "opted_out";
     else if (contact.sms_undeliverable_at) skipped = "undeliverable";
-    else if (
-      contact.last_message_at &&
-      (contact.last_message_direction === "inbound" || contact.last_message_direction === "outbound") &&
-      now.getTime() - Date.parse(contact.last_message_at) < ACTIVE_CONVERSATION_MS
-    )
+    else if (await inRealConversation(client.id, contact.id, now))
       skipped = "active_conversation"; // they're already texting each other: the owner will ring back
     else {
       const { count } = await db()
@@ -88,4 +84,14 @@ export async function POST(request: Request) {
 
   if (!texted) return sayAndHangUp("Sorry we missed your call. We'll get back to you as soon as we can.");
   return sayAndHangUp("Sorry we missed your call. We've sent you a text and will get back to you shortly.");
+}
+
+/**
+ * The customer has texted the business in the last day, so the owner already has their message in the app.
+ * Automatic texts we sent (review requests, campaigns, reminders, quotes) don't count.
+ */
+async function inRealConversation(clientId: string, contactId: string, now: Date) {
+  const since = new Date(now.getTime() - ACTIVE_CONVERSATION_MS).toISOString();
+  const { count } = await db().from("replies").select("id", { count: "exact", head: true }).eq("client_id", clientId).eq("contact_id", contactId).gte("created_at", since);
+  return !!count;
 }
