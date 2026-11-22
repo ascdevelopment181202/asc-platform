@@ -5,6 +5,7 @@ import { chase24Email, chase48Email, notifyAdmin, sendEmail } from "@/lib/email"
 import { firstNameOf, formLink } from "@/lib/onboarding";
 import { REPORT_DAYS, reportPeriod, sendReport } from "@/lib/reports";
 import type { Site } from "@/lib/sites";
+import { gbp, KIND_LABEL, usageThisMonth } from "@/lib/usage";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -94,6 +95,27 @@ export async function GET(request: Request) {
     if (!site?.published) continue;
     // Only the latest period, so a client never gets a backlog of old reports.
     await run(c, `report_${n}`, () => sendReport(c, site, reportPeriod(c.launched_at!, n), { first: n === 1 }));
+  }
+
+  // Texting budgets: email you once a month when a client's projected texting passes 80% and 100% of their budget.
+  const usage = await usageThisMonth();
+  const ym = new Date(now).toISOString().slice(0, 7);
+  for (const u of usage) {
+    const budget = u.client.sms_budget_gbp == null ? null : Number(u.client.sms_budget_gbp);
+    if (!budget) continue;
+    const name = u.client.business_name ?? "A client";
+    for (const level of [100, 80]) {
+      const hit = level === 100 ? u.costGbp >= budget : u.projectedGbp >= budget * (level / 100);
+      if (!hit) continue;
+      await run({ id: u.client.id, business_name: u.client.business_name } as Client, `sms_budget_${level}_${ym}`, () =>
+        notifyAdmin(`${name}: texting ${level === 100 ? "over" : "heading over"} budget`, [
+          `${name} has spent ${gbp(u.costGbp)} on texts this month and is heading for ${gbp(u.projectedGbp)}. Budget: ${gbp(budget)}.`,
+          `Biggest use: ${Object.entries(u.byKind).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([k, n]) => `${KIND_LABEL[k] ?? k} (${n})`).join(", ") || "none"}.`,
+          `${env.appUrl}/admin/clients/${u.client.id}`,
+        ]),
+      );
+      break; // one email per run: the higher level wins
+    }
   }
 
   if (failures.length) console.error("Chase cron failures", failures);

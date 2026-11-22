@@ -240,3 +240,10 @@ export async function reaskReview(f: FormData) {
   if (!result.ok) return back(to, "err", result.error);
   return back(to, "ok", "Done. We'll send a short, friendly text asking again.");
 }
+
+/** The owner says the number works after all: start texting it again. */
+export async function retryTexts(f: FormData) {
+  const { c, contact } = await contactFromForm(f);
+  await db().from("contacts").update({ sms_undeliverable_at: null, sms_fail_count: 0 }).eq("id", contact.id);
+  return back(safeBack(f, c.dashboard_token, `/m/${c.dashboard_token}/contacts/${contact.id}`), "ok", "OK, we'll text this number again.");
+}

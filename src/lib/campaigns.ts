@@ -47,8 +47,44 @@ export async function buildAudience(c: Client, a: Audience) {
     .gte("created_at", new Date(Date.now() - 30 * DAY).toISOString())
     .returns<{ contact_id: string }[]>();
   const recentIds = new Set((recent ?? []).map((r) => r.contact_id));
-  const recipients = textable.filter((ct) => !recentIds.has(ct.id));
-  return { recipients, skippedRecent: textable.length - recipients.length, skippedNoMobile: (data ?? []).length - textable.length };
+  const fresh = textable.filter((ct) => !recentIds.has(ct.id) && !ct.sms_undeliverable_at);
+  const ignored = await ignoredLastTwo(c.id);
+  const recipients = fresh.filter((ct) => !ignored.has(ct.id));
+  return {
+    recipients,
+    skippedRecent: textable.length - fresh.length,
+    skippedIgnored: fresh.length - recipients.length,
+    skippedNoMobile: (data ?? []).length - textable.length,
+  };
+}
+
+/** Customers who were sent both of the last two campaigns and never replied: texting them again is money wasted. */
+async function ignoredLastTwo(clientId: string): Promise<Set<string>> {
+  const { data: last } = await db().from("campaigns").select("id, created_at").eq("client_id", clientId).order("created_at", { ascending: false }).limit(2).returns<{ id: string; created_at: string }[]>();
+  if (!last || last.length < 2) return new Set();
+  const { data: sent } = await db()
+    .from("outbox")
+    .select("contact_id, campaign_id")
+    .in("campaign_id", last.map((x) => x.id))
+    .not("sent_at", "is", null)
+    .returns<{ contact_id: string; campaign_id: string }[]>();
+  const both = new Map<string, number>();
+  for (const r of sent ?? []) both.set(r.contact_id, (both.get(r.contact_id) ?? 0) + 1);
+  const candidates = [...both.entries()].filter(([, n]) => n >= 2).map(([id]) => id);
+  if (!candidates.length) return new Set();
+  const since = last.at(-1)!.created_at;
+  const { data: replied } = await db().from("replies").select("contact_id").eq("client_id", clientId).in("contact_id", candidates).gte("created_at", since).returns<{ contact_id: string }[]>();
+  const repliedIds = new Set((replied ?? []).map((r) => r.contact_id));
+  return new Set(candidates.filter((id) => !repliedIds.has(id)));
+}
+
+/** Campaign texts already queued this calendar month, against the client's monthly allowance. */
+export async function campaignAllowance(c: Client) {
+  const now = new Date();
+  const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
+  const { count } = await db().from("outbox").select("id", { count: "exact", head: true }).eq("client_id", c.id).not("campaign_id", "is", null).is("cancelled_at", null).gte("created_at", monthStart);
+  const limit = c.campaign_monthly_limit ?? 300;
+  return { used: count ?? 0, limit, left: Math.max(0, limit - (count ?? 0)) };
 }
 
 /** Can this client send campaign texts right now? (US numbers need their registration approved first.) */

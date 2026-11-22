@@ -245,7 +245,10 @@ export default async function Guide() {
           <li>Google reviews: checked every 30 minutes, new ones pinged to the owner, 4 to 5 stars replied to automatically after a day, 5 star reviews shown on their website.</li>
           <li>Campaigns: owners text an offer to past customers from the app (Campaigns). About 100 texts an hour, 9am to 7pm, STOP added automatically, nobody gets two campaigns within 30 days. US clients need their registration approved first.</li>
           <li>Monday 9am: last week&apos;s reviews and how close they are to their competitor.</li>
-          <li>Booking reminders: the day before each appointment.</li>
+          <li>Booking reminders: the day before each appointment (text). Confirmations, moves, cancellations, quotes and invoices go by email when the customer has an email address, otherwise by text.</li>
+          <li>Missed calls: one auto-text per caller per day, none if the owner and customer have texted in the last day. Numbers that keep failing are marked and not texted again.</li>
+          <li>Owner alerts: a notification on their phone; if notifications are off, an email (texting the owner is opt-in per client).</li>
+          <li>Costs: admin, Costs shows every client&apos;s real texts and cost this month, with a projection. Set a monthly budget on a client&apos;s page and you&apos;re emailed at 80% and 100%. Campaign texts are capped per client per month (300 by default).</li>
           <li>Onboarding chasers: 24h and 48h emails to the client, an email to you at 72h.</li>
           <li>Build deadline alerts: 12 hours before and when overdue.</li>
           <li>Forwarding check: an email to you if a client has had no forwarded calls for 7 days.</li>

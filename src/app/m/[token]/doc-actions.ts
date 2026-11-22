@@ -1,5 +1,6 @@
 "use server";
 
+import { messageCustomer } from "@/lib/customer-email";
 import { firstThatFits } from "@/lib/sms-text";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/supabase";
@@ -73,20 +74,30 @@ async function docFromForm(f: FormData) {
   return { c, doc, contact, page: `/m/${c.dashboard_token}/docs/${doc.id}` };
 }
 
-/** Texts the customer a link to view (and accept or pay). */
+/** Sends the customer a link to view (and accept or pay): by email when we have their address, else by text. */
 export async function sendDocument(f: FormData) {
   const { c, doc, contact, page } = await docFromForm(f);
   if (!contact) back(page, "err", "This customer no longer exists.");
-  if (contact!.opted_out_at) back(page, "err", "This customer replied STOP, so you can't text them. Copy the link and send it another way.");
   const first = contact!.name?.split(/\s+/)[0] || "there";
-  const what = doc.kind === "quote" ? `your quote from ${clientLabel(c)} for ${money(doc.total_pence, doc.currency)}` : `your invoice from ${clientLabel(c)} for ${money(doc.total_pence, doc.currency)}`;
+  const amount = money(doc.total_pence, doc.currency);
+  const what = doc.kind === "quote" ? `your quote from ${clientLabel(c)} for ${amount}` : `your invoice from ${clientLabel(c)} for ${amount}`;
   const link = docLink(doc, env.appUrl);
-  const short = `Your ${doc.kind} from ${clientLabel(c)} (${money(doc.total_pence, doc.currency)}): ${link}`;
-  const r = await sendSms({ client: c, to: contact!.phone, kind: "manual", contactId: contact!.id, body: firstThatFits([`Hi ${first}, here's ${what}: ${link}`, short]) });
-  if (!r.ok) back(page, "err", "The text didn't send. Copy the link below and send it another way.");
+  const short = `Your ${doc.kind} from ${clientLabel(c)} (${amount}): ${link}`;
+  const r = await messageCustomer({
+    client: c,
+    contact: contact!,
+    forceText: f.get("byText") === "on",
+    text: firstThatFits([`Hi ${first}, here's ${what}: ${link}`, short]),
+    email: {
+      subject: `${doc.kind === "quote" ? "Your quote" : "Your invoice"} from ${clientLabel(c)}`,
+      paragraphs: [`Hi ${first},`, doc.kind === "quote" ? `Here's your quote for ${amount}. You can view it and accept it online.` : `Here's your invoice for ${amount}. You can view it and pay online.`],
+      button: { label: doc.kind === "quote" ? "View quote" : "View invoice", url: link },
+    },
+  });
+  if (!r.ok) back(page, "err", `It didn't send (${r.error}). Copy the link below and send it another way.`);
   if (doc.status === "draft") await db().from("documents").update({ status: "sent", sent_at: new Date().toISOString() }).eq("id", doc.id);
   if (doc.kind === "quote") await setStage(contact!, "quoted");
-  back(page, "ok", `${docTitle(doc)} sent.`);
+  back(page, "ok", `${docTitle(doc)} sent by ${r.ok && r.channel === "email" ? `email to ${contact!.email}` : "text"}.`);
 }
 
 export async function markPaid(f: FormData) {

@@ -1,4 +1,5 @@
 import { env } from "@/lib/env";
+import { emailOwner } from "@/lib/owner-email";
 import { firstThatFits } from "@/lib/sms-text";
 import { db, type Client } from "@/lib/supabase";
 import { clientLabel, once } from "@/lib/clients";
@@ -130,7 +131,7 @@ export async function GET(request: Request) {
     .is("cancelled_at", null)
     .lte("send_at", now.toISOString())
     .limit(50)
-    .returns<{ id: string; client_id: string; contact_id: string; body: string; send_at: string; contacts: { phone: string; opted_out_at: string | null } | null }[]>();
+    .returns<{ id: string; client_id: string; contact_id: string; campaign_id: string | null; body: string; send_at: string; contacts: { phone: string; opted_out_at: string | null } | null }[]>();
   for (const o of outbox ?? []) {
     const c = await getClient(o.client_id);
     if (!c || !inSendingWindow(c, now)) continue;
@@ -140,7 +141,7 @@ export async function GET(request: Request) {
     }
     const { data: claimed } = await db().from("outbox").update({ sent_at: now.toISOString() }).eq("id", o.id).is("sent_at", null).select("id");
     if (!claimed?.length) continue;
-    const r = await sendSms({ client: c, to: o.contacts.phone, body: o.body, kind: "manual", contactId: o.contact_id });
+    const r = await sendSms({ client: c, to: o.contacts.phone, body: o.body, kind: o.campaign_id ? "campaign" : "manual", contactId: o.contact_id });
     (r.ok ? sent : skipped).push(`outbox ${clientLabel(c)}${r.ok ? "" : `: ${r.error}`}`);
   }
 
@@ -269,10 +270,10 @@ export async function GET(request: Request) {
         : { title: "Any jobs finished this week?", body: "Tap to ask your customers for a Google review. It takes seconds.", url: `/m/${c.dashboard_token}/today` };
       const { count } = await db().from("push_subscriptions").select("id", { count: "exact", head: true }).eq("client_id", c.id);
       if (count) await notifyClient(c.id, msg);
-      else if (c.owner_mobile && c.country !== "US") {
-        // No notifications on their phone: a text to the owner instead (US waits for texting registration).
+      else {
+        // No notifications on their phone: an email instead of a text (free).
         const link = `${app}${msg.url.replace(`/m/${c.dashboard_token}`, "")}`;
-        await sendSms({ client: c, to: c.owner_mobile, kind: "owner_confirm", body: firstThatFits([`${msg.title} ${msg.body.replace("Tap", "Open your app")} ${link}`, `${msg.title} Ask them for reviews here: ${link}`, `Ask today's customers for reviews: ${link}`]) });
+        await emailOwner(c, msg.title, [msg.body.replace("Tap", "Open your app")], { label: "Open today's customers", url: link });
       }
     }).catch((err) => skipped.push(`review nudge ${clientLabel(c)}: ${err instanceof Error ? err.message : err}`));
   }

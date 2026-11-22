@@ -50,7 +50,7 @@ export default async function NewBooking({ params, searchParams }: { params: Pro
           <input name="address" defaultValue={contact?.address ?? ""} placeholder="Address" className={field} />
           <textarea name="notes" rows={2} placeholder="Notes (only you see these)" className={field} />
           <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" name="confirm" defaultChecked className="size-4" /> Text the customer a confirmation (and a reminder the day before)
+            <input type="checkbox" name="confirm" defaultChecked className="size-4" /> Send the customer a confirmation (email if we have it, otherwise a text) and a reminder text the day before
           </label>
           <button className={primaryBtn}>Save booking</button>
         </form>

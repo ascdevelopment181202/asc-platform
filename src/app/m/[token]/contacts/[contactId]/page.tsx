@@ -5,7 +5,7 @@ import { displayPhone, localeFor } from "@/lib/phone";
 import { currencyFor, money, STAGES } from "@/lib/crm";
 import { fullWhen, loadClient, loadContact, shortWhen } from "../../data";
 import { Avatar, Card, field, Flash, primaryBtn, SubHeader } from "../../ui";
-import { addNote, changeStage, reaskReview, requestReview, updateContact } from "../../crm-actions";
+import { addNote, changeStage, reaskReview, requestReview, retryTexts, updateContact } from "../../crm-actions";
 import { openTasks } from "@/lib/tasks";
 import { AddTaskForm, TaskList } from "../../tasks-ui";
 
@@ -85,6 +85,18 @@ export default async function ContactPage({ params, searchParams }: Props) {
           </div>
           {contact.job_value_pence != null && <p className="mt-2 text-sm text-neutral-600">Job value: {money(contact.job_value_pence, currency)}</p>}
         </Card>
+
+        {contact.sms_undeliverable_at && (
+          <section className="rounded-2xl bg-red-50 p-4 text-sm text-red-900 ring-1 ring-red-200">
+            <p className="font-semibold">Texts to this number keep failing</p>
+            <p className="mt-0.5">It may be a landline or no longer in use, so we&apos;ve stopped texting it. Add their email to reach them, or update the number.</p>
+            <form action={retryTexts} className="mt-2">
+              {hidden}
+              <input type="hidden" name="back" value={here} />
+              <button className="text-sm font-medium underline">The number works, try again</button>
+            </form>
+          </section>
+        )}
 
         {offerReask && (
           <section className="rounded-2xl bg-amber-50 p-4 ring-1 ring-amber-200">

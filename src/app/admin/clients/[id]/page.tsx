@@ -20,7 +20,8 @@ import { countryOf, EMERGENCY_AFTER_HOURS, fill, firstSendLabel, reviewSettings,
 import { segmentsOf, toGsm } from "@/lib/sms-text";
 import { displayUk, forwardingCodes } from "@/lib/phone";
 import { a2pStatus } from "@/lib/twilio";
-import { saveAutopilot, saveBranding, saveCompetitor, saveReviewLocation } from "../../brand-actions";
+import { saveAutopilot, saveBranding, saveCompetitor, saveReviewLocation, saveUsageSettings } from "../../brand-actions";
+import { gbp, KIND_LABEL, usageThisMonth } from "@/lib/usage";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -88,6 +89,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
     : { count: 0 };
 
   const stats = site ? await reportStats(site, lastThirtyDays()) : null;
+  const usage = await usageThisMonth(c.id);
   const gConnected = googleEnabled() && !!(await googleAccount());
   let gscSites: string[] | null = null;
   let gbpLocations: GbpLocation[] | null = null;
@@ -222,6 +224,39 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
                     </div>
                   ))}
                 </dl>
+              </Card>
+            );
+          })()}
+
+          {(() => {
+            const u = usage[0];
+            return (
+              <Card title="Texting costs this month">
+                <div className="space-y-3 text-sm">
+                  {u ? (
+                    <>
+                      <p>
+                        <strong>{gbp(u.costGbp)}</strong> so far, heading for <strong>{gbp(u.projectedGbp)}</strong> this month. {u.sentSegments} texts sent, {u.receivedSegments} received{u.failed ? `, ${u.failed} failed` : ""}.
+                      </p>
+                      {Object.keys(u.byKind).length > 0 && (
+                        <ul className="text-xs text-neutral-600">
+                          {Object.entries(u.byKind).sort((a, b) => b[1] - a[1]).map(([k, n]) => (
+                            <li key={k}>{KIND_LABEL[k] ?? k}: {n}</li>
+                          ))}
+                        </ul>
+                      )}
+                    </>
+                  ) : (
+                    <p className="text-neutral-500">No texts yet.</p>
+                  )}
+                  <form action={saveUsageSettings} className="grid grid-cols-2 gap-2">
+                    <input type="hidden" name="clientId" value={c.id} />
+                    <label className="block"><span className="text-xs text-neutral-600">Monthly budget, £ (email me if heading over)</span><input name="sms_budget_gbp" type="number" min="0" step="1" defaultValue={c.sms_budget_gbp ?? ""} placeholder="e.g. 20" className={input} /></label>
+                    <label className="block"><span className="text-xs text-neutral-600">Campaign texts included a month</span><input name="campaign_monthly_limit" type="number" min="0" step="50" defaultValue={c.campaign_monthly_limit} className={input} /></label>
+                    <button className={`${btnQuiet} col-span-2`}>Save limits</button>
+                  </form>
+                  <a href="/admin/usage" className="text-xs underline">All clients&apos; costs</a>
+                </div>
               </Card>
             );
           })()}
@@ -680,7 +715,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
                 </p>
               </details>
               <label className="flex items-center gap-2">
-                <input type="checkbox" name="forward_replies" defaultChecked={c.forward_replies} /> Also text new customer messages to the owner&apos;s phone, only while notifications aren&apos;t switched on (texts cost, notifications are free)
+                <input type="checkbox" name="forward_replies" defaultChecked={c.forward_replies} /> Also text new customer messages to the owner&apos;s phone while notifications aren&apos;t on. They&apos;re emailed to the owner either way; texting costs about 4p each
               </label>
               <label className="flex items-center gap-2">
                 <input type="checkbox" name="sms_enabled" defaultChecked={c.sms_enabled} disabled={!c.twilio_number} /> Texts switched on{!c.twilio_number && " (switches on when you set up their phone)"}

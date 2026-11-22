@@ -74,6 +74,7 @@ export default async function BookingPage({ params, searchParams }: Props) {
         <input type="text" name="website" tabIndex={-1} autoComplete="off" className="hidden" aria-hidden />
         <input name="name" required placeholder="Your name" className="w-full rounded-xl border border-neutral-300 px-4 py-3 text-base" />
         <input name="phone" type="tel" inputMode="tel" required placeholder={us ? "Cell number" : "Mobile number"} className="w-full rounded-xl border border-neutral-300 px-4 py-3 text-base" />
+        <input name="email" type="email" autoComplete="email" placeholder="Email (for your confirmation)" className="w-full rounded-xl border border-neutral-300 px-4 py-3 text-base" />
         <input name="address" placeholder={us ? "Address and ZIP" : "Address and postcode"} className="w-full rounded-xl border border-neutral-300 px-4 py-3 text-base" />
         <textarea name="what" rows={3} placeholder="What do you need help with?" className="w-full rounded-xl border border-neutral-300 px-4 py-3 text-base" />
         <button className="w-full rounded-xl bg-[#2a78d6] px-4 py-3.5 text-base font-semibold text-white">Confirm booking</button>

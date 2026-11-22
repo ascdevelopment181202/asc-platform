@@ -74,9 +74,15 @@ export default async function DocPage({ params, searchParams }: { params: Promis
         </Card>
 
         {doc.status !== "void" && doc.status !== "paid" && (
-          <form action={sendDocument}>
+          <form action={sendDocument} className="space-y-2">
             {hidden}
-            <button className={primaryBtn}>{doc.status === "draft" ? `Send ${doc.kind} by text` : "Send again"}</button>
+            <button className={primaryBtn}>{doc.status === "draft" ? `Send ${doc.kind} by ${contact?.email ? "email" : "text"}` : "Send again"}</button>
+            {contact?.email && (
+              <label className="flex items-center justify-center gap-2 text-sm text-neutral-600">
+                <input type="checkbox" name="byText" className="size-4" /> Text it instead of emailing {contact.email}
+              </label>
+            )}
+            {!contact?.email && <p className="text-center text-xs text-neutral-500">Add their email on their customer page and it&apos;ll go by email instead, which is free.</p>}
           </form>
         )}
         <div className="grid grid-cols-3 gap-2">

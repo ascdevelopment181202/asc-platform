@@ -25,12 +25,14 @@ type Item =
   | { kind: "event"; at: string; note: string; href?: string }
   | { kind: "note"; at: string; body: string };
 
-const AUTO_LABEL: Record<string, string> = { missed_call: "Auto-text after missed call", review: "Review request" };
+const AUTO_LABEL: Record<string, string> = { missed_call: "Auto-text after missed call", review: "Review request", campaign: "Campaign" };
 const SKIP_NOTE: Record<string, string> = {
   repeat_caller: "called again",
   opted_out: "no text, opted out",
   sms_disabled: "no text, texts off",
   send_failed: "auto-text failed",
+  active_conversation: "no auto-text, you're already chatting",
+  undeliverable: "no text, this number can't get texts",
 };
 
 /** One conversation: every call, text and review event with this customer, plus a reply box. */

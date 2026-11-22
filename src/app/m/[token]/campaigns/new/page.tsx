@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { db } from "@/lib/supabase";
-import { audienceFrom, buildAudience, campaignBlocker, describeAudience, MAX_RECIPIENTS } from "@/lib/campaigns";
+import { audienceFrom, buildAudience, campaignAllowance, campaignBlocker, describeAudience, MAX_RECIPIENTS } from "@/lib/campaigns";
 import { businessName, senderLine } from "@/lib/sms";
 import { loadClient } from "../../data";
 import { Flash, SubHeader } from "../../ui";
@@ -18,11 +18,12 @@ export default async function NewCampaign({ params, searchParams }: { params: Pr
   const c = await loadClient(token);
   if (!c) notFound();
   const a = audienceFrom(sp);
-  const [{ recipients, skippedRecent, skippedNoMobile }, blocked, { data: saved }, { data: tagRows }] = await Promise.all([
+  const [{ recipients, skippedRecent, skippedIgnored, skippedNoMobile }, blocked, { data: saved }, { data: tagRows }, allowance] = await Promise.all([
     buildAudience(c, a),
     campaignBlocker(c),
     db().from("campaign_templates").select("id, name, body").eq("client_id", c.id).order("created_at", { ascending: false }).limit(10).returns<{ id: string; name: string; body: string }[]>(),
     db().from("contacts").select("tags").eq("client_id", c.id).not("tags", "eq", "{}").limit(500).returns<{ tags: string[] }[]>(),
+    campaignAllowance(c),
   ]);
   const tags = [...new Set((tagRows ?? []).flatMap((r) => r.tags))].sort().slice(0, 30);
   const n = recipients.length;
@@ -34,6 +35,10 @@ export default async function NewCampaign({ params, searchParams }: { params: Pr
       <Flash err={sp.err} />
       <div className="space-y-4 p-4">
         {blocked && <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">{blocked}</p>}
+        <p className={`rounded-xl p-3 text-sm ${n > allowance.left ? "bg-amber-50 text-amber-900" : "bg-white text-neutral-700 shadow-sm"}`}>
+          <strong>{allowance.left}</strong> of {allowance.limit} campaign texts left this month.
+          {n > allowance.left ? " This audience is bigger than that: narrow it down, or ask ASC for more." : ""}
+        </p>
 
         <section className="rounded-2xl bg-white p-4 shadow-sm">
           <h2 className="font-semibold">1. Who to send it to</h2>
@@ -63,6 +68,7 @@ export default async function NewCampaign({ params, searchParams }: { params: Pr
             <strong>{n}</strong> {n === 1 ? "customer" : "customers"}: {describeAudience(a)}.
             {a.who !== "lapsed" ? " (The months box only applies to “haven't heard from”.)" : ""}
             {skippedRecent ? ` ${skippedRecent} left out because they had a campaign text in the last 30 days.` : ""}
+            {skippedIgnored ? ` ${skippedIgnored} left out because they didn't reply to your last two campaigns.` : ""}
             {skippedNoMobile ? ` ${skippedNoMobile} have no mobile number.` : ""}
           </p>
         </section>
@@ -85,7 +91,7 @@ export default async function NewCampaign({ params, searchParams }: { params: Pr
               <input type="checkbox" name="confirm" className="mt-0.5 h-5 w-5" />
               <span>These are my customers and I&apos;m happy to text them this offer.</span>
             </label>
-            <button disabled={!!blocked || !n || n > MAX_RECIPIENTS} className="mt-3 w-full rounded-xl bg-[#2a78d6] px-4 py-3.5 text-base font-semibold text-white active:bg-[#1f62b3] disabled:opacity-50">
+            <button disabled={!!blocked || !n || n > MAX_RECIPIENTS || n > allowance.left} className="mt-3 w-full rounded-xl bg-[#2a78d6] px-4 py-3.5 text-base font-semibold text-white active:bg-[#1f62b3] disabled:opacity-50">
               Send to {n} {n === 1 ? "customer" : "customers"}
             </button>
           </section>

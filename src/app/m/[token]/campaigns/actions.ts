@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/supabase";
-import { audienceFrom, buildAudience, campaignBlocker, MAX_RECIPIENTS, queueCampaign } from "@/lib/campaigns";
+import { audienceFrom, buildAudience, campaignAllowance, campaignBlocker, MAX_RECIPIENTS, queueCampaign } from "@/lib/campaigns";
 import { clientFromForm } from "../data";
 
 const str = (f: FormData, k: string) => String(f.get(k) ?? "").trim();
@@ -24,6 +24,14 @@ export async function sendCampaign(f: FormData) {
   const { recipients } = await buildAudience(c, a);
   if (!recipients.length) fail("Nobody to send to with those choices.");
   if (recipients.length > MAX_RECIPIENTS) fail(`That's ${recipients.length} people. Narrow it down to ${MAX_RECIPIENTS} or fewer, or ask ASC to send it for you.`);
+  const allowance = await campaignAllowance(c);
+  if (recipients.length > allowance.left) {
+    fail(
+      allowance.left
+        ? `You've got ${allowance.left} campaign texts left this month (${allowance.limit} included). Narrow it down, or ask ASC for more.`
+        : `You've used this month's ${allowance.limit} campaign texts. Ask ASC to add more, or send it next month.`,
+    );
+  }
 
   if (f.get("save") === "on") {
     await db().from("campaign_templates").insert({ client_id: c.id, name: (str(f, "name") || body.slice(0, 40)).slice(0, 60), body });
