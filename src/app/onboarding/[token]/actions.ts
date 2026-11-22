@@ -9,6 +9,7 @@ import { describeHours, US_TIMEZONES, FIELD_LABELS, MAX_FILE_MB, MAX_PHOTOS, onb
 import { isTextable, normalizePhone } from "@/lib/phone";
 import { friendlyPhoneError, setUpPhoneForClient } from "@/lib/phone-setup";
 import { EMERGENCY_AFTER_HOURS } from "@/lib/sms";
+import { logoFromOnboarding } from "@/lib/brand";
 import { after } from "next/server";
 
 const BUILD_HOURS = 48;
@@ -118,6 +119,14 @@ export async function submitOnboarding(token: string, input: OnboardingInput): P
   if (!updated) return { ok: true }; // a parallel submit already won
 
   await createTask(client.id, `Build and launch: ${clientLabel(updated)}`, dueAt);
+
+  // Their uploaded logo goes on their quotes, invoices and review page.
+  if (logoPath && !updated.logo_url) {
+    after(async () => {
+      const url = await logoFromOnboarding(client.id, logoPath, ASSETS_BUCKET);
+      if (url) await db().from("clients").update({ logo_url: url }).eq("id", client.id).is("logo_url", null);
+    });
+  }
 
   // UK clients: buy their number and send the welcome straight away, after the form has replied.
   // US clients wait for you, because their number needs A2P registration alongside it.

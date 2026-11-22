@@ -78,9 +78,12 @@ export default async function DocPage({ params, searchParams }: { params: Promis
             <button className={primaryBtn}>{doc.status === "draft" ? `Send ${doc.kind} by text` : "Send again"}</button>
           </form>
         )}
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-3 gap-2">
           <a href={link} target="_blank" rel="noreferrer" className={`${quietBtn} text-center`}>
             View as customer
+          </a>
+          <a href={`/m/${token}/docs/${doc.id}/pdf`} target="_blank" rel="noreferrer" className={`${quietBtn} text-center`}>
+            PDF
           </a>
           {doc.status === "draft" ? (
             <Link href={`/m/${token}/docs/new?id=${doc.id}`} className={`${quietBtn} text-center`}>

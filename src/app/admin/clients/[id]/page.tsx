@@ -19,6 +19,7 @@ import { resendPhoneWelcome, saveSmsSettings, sendTestText, setUpPhone } from ".
 import { countryOf, EMERGENCY_AFTER_HOURS, TEMPLATE_HELP, templatesFor } from "@/lib/sms";
 import { displayUk, forwardingCodes } from "@/lib/phone";
 import { a2pStatus } from "@/lib/twilio";
+import { saveBranding } from "../../brand-actions";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -40,8 +41,9 @@ const MESSAGE_LABELS: Record<string, string> = {
   day30_report: "Day-30 report task created",
 };
 
-export default async function ClientPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ sms_ok?: string; sms_err?: string }> }) {
-  const { sms_ok: smsOk, sms_err: smsErr } = await searchParams;
+export default async function ClientPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ sms_ok?: string; sms_err?: string; brand_ok?: string; brand_err?: string }> }) {
+  const sp = await searchParams;
+  const { sms_ok: smsOk, sms_err: smsErr } = sp;
   const { id } = await params;
   const supabase = db();
   const { data: c } = await supabase.from("clients").select("*").eq("id", id).maybeSingle<Client>();
@@ -134,6 +136,35 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
                   ))}
               </dl>
             )}
+          </Card>
+
+          <Card title="Branding (quotes, invoices, review page)">
+            <form id="brand" action={saveBranding} className="space-y-2 text-sm">
+              <input type="hidden" name="clientId" value={c.id} />
+              {sp.brand_ok && <p className="rounded bg-green-50 p-2 text-green-800">Branding saved.</p>}
+              {sp.brand_err && <p className="rounded bg-red-50 p-2 text-red-800">{sp.brand_err}</p>}
+              <div className="flex items-center gap-3">
+                {c.logo_url ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={c.logo_url} alt="Logo" className="h-12 max-w-[160px] rounded border border-neutral-200 bg-white object-contain p-1" />
+                ) : (
+                  <span className="text-neutral-500">No logo yet</span>
+                )}
+                <input name="logo" type="file" accept="image/png,image/jpeg" className="text-xs" />
+              </div>
+              <label className="flex items-center gap-2">
+                Brand colour <input name="brandColor" type="color" defaultValue={c.brand_color ?? "#2a78d6"} className="h-8 w-14" />
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <input name="businessPhone" defaultValue={c.invoice_details?.businessPhone} placeholder="Business phone" className={input} />
+                <input name="businessEmail" defaultValue={c.invoice_details?.businessEmail ?? c.email} placeholder="Business email" className={input} />
+                <input name="website" defaultValue={c.invoice_details?.website ?? c.live_url ?? ""} placeholder="Website" className={input} />
+                <input name="companyNumber" defaultValue={c.invoice_details?.companyNumber} placeholder="Company number" className={input} />
+                <input name="vatNumber" defaultValue={c.invoice_details?.vatNumber} placeholder="VAT number" className={input} />
+              </div>
+              <textarea name="businessAddress" rows={2} defaultValue={c.invoice_details?.businessAddress} placeholder="Business address" className={`${input} w-full`} />
+              <button className={btn}>Save branding</button>
+            </form>
           </Card>
 
           <Card title={`Leads from website (${leads?.length ?? 0})`}>

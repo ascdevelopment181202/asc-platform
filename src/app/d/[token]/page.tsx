@@ -1,25 +1,17 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { db, type Client } from "@/lib/supabase";
 import { clientLabel } from "@/lib/clients";
 import { displayPhone, localeFor } from "@/lib/phone";
-import { docTitle, money, type Doc } from "@/lib/crm";
+import { docTitle, money } from "@/lib/crm";
 import { acceptQuote } from "./actions";
+import { loadPublicDoc } from "@/lib/doc-pdf";
+import { brandOf } from "@/lib/brand";
 
 export const dynamic = "force-dynamic";
 
 type Props = { params: Promise<{ token: string }>; searchParams: Promise<{ accepted?: string }> };
 
-async function load(token: string) {
-  if (!/^[0-9a-f]{24}$/.test(token)) return null;
-  const { data: doc } = await db().from("documents").select("*").eq("public_token", token).maybeSingle<Doc>();
-  if (!doc || doc.status === "draft") return null;
-  const [{ data: c }, { data: contact }] = await Promise.all([
-    db().from("clients").select("*").eq("id", doc.client_id).single<Client>(),
-    db().from("contacts").select("name, phone, address, email").eq("id", doc.contact_id).maybeSingle<{ name: string | null; phone: string; address: string | null; email: string | null }>(),
-  ]);
-  return c ? { doc, c, contact } : null;
-}
+const load = loadPublicDoc;
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const data = await load((await params).token);
@@ -34,23 +26,35 @@ export default async function PublicDoc({ params, searchParams }: Props) {
   if (!data) notFound();
   const { doc, c, contact } = data;
   const inv = c.invoice_details ?? {};
+  const brand = brandOf(c);
+  const accent = { backgroundColor: brand.color, color: brand.onColor };
   const locale = localeFor(c.country);
   const us = c.country === "US";
   const date = (iso: string) => new Date(iso).toLocaleDateString(locale, { day: "numeric", month: "long", year: "numeric", timeZone: c.timezone || "Europe/London" });
 
   return (
     <div className="min-h-dvh bg-[#f4f5f7] px-4 py-8 text-neutral-900 print:bg-white">
-      <div className="mx-auto max-w-2xl rounded-2xl bg-white p-6 shadow-sm print:shadow-none sm:p-10">
+      <div className="mx-auto max-w-2xl overflow-hidden rounded-2xl bg-white shadow-sm print:shadow-none">
+        <div className="h-2" style={{ backgroundColor: brand.color }} />
+        <div className="p-6 sm:p-10">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="text-xl font-bold">{clientLabel(c)}</p>
-            {inv.businessAddress && <p className="whitespace-pre-line text-sm text-neutral-600">{inv.businessAddress}</p>}
-            {c.twilio_number && <p className="text-sm text-neutral-600">{displayPhone(c.twilio_number)}</p>}
-            {inv.vatNumber && <p className="text-sm text-neutral-600">{us ? "Tax ID" : "VAT no."} {inv.vatNumber}</p>}
+            {brand.logo ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={brand.logo} alt={brand.name} className="mb-3 max-h-16 max-w-[200px] object-contain" />
+            ) : (
+              <p className="text-xl font-bold">{brand.name}</p>
+            )}
+            {brand.logo && <p className="font-semibold">{brand.name}</p>}
+            {brand.address && <p className="whitespace-pre-line text-sm text-neutral-600">{brand.address}</p>}
+            {brand.phone && <p className="text-sm text-neutral-600">{brand.phone}</p>}
+            {brand.email && <p className="text-sm text-neutral-600">{brand.email}</p>}
+            {brand.companyNumber && <p className="text-sm text-neutral-600">Company no. {brand.companyNumber}</p>}
+            {brand.vatNumber && <p className="text-sm text-neutral-600">{us ? "Tax ID" : "VAT no."} {brand.vatNumber}</p>}
           </div>
           <div className="text-right">
             <p className="text-2xl font-bold uppercase tracking-wide text-neutral-800">{doc.kind}</p>
-            <p className="text-sm text-neutral-600">#{doc.number}</p>
+            <p className="text-sm text-neutral-600">No. {doc.number}</p>
             <p className="text-sm text-neutral-600">{date(doc.sent_at ?? doc.created_at)}</p>
             {doc.kind === "invoice" && doc.due_date && <p className="text-sm text-neutral-600">Due {date(`${doc.due_date}T12:00:00Z`)}</p>}
           </div>
@@ -64,20 +68,20 @@ export default async function PublicDoc({ params, searchParams }: Props) {
 
         <table className="mt-6 w-full text-sm">
           <thead>
-            <tr className="border-b border-neutral-200 text-left text-neutral-500">
-              <th className="py-2 font-medium">Description</th>
-              <th className="py-2 text-right font-medium">Qty</th>
-              <th className="py-2 text-right font-medium">Price</th>
-              <th className="py-2 text-right font-medium">Amount</th>
+            <tr className="text-left" style={accent}>
+              <th className="px-2 py-2 font-semibold">Description</th>
+              <th className="px-2 py-2 text-right font-semibold">Qty</th>
+              <th className="px-2 py-2 text-right font-semibold">Price</th>
+              <th className="px-2 py-2 text-right font-semibold">Amount</th>
             </tr>
           </thead>
           <tbody>
             {doc.items.map((it, i) => (
               <tr key={i} className="border-b border-neutral-100">
-                <td className="py-2 pr-2">{it.description}</td>
-                <td className="py-2 text-right">{it.quantity}</td>
-                <td className="py-2 text-right">{money(it.unitPence, doc.currency)}</td>
-                <td className="py-2 text-right">{money(Math.round(it.quantity * it.unitPence), doc.currency)}</td>
+                <td className="whitespace-pre-wrap px-2 py-2">{it.description}</td>
+                <td className="px-2 py-2 text-right">{it.quantity}</td>
+                <td className="px-2 py-2 text-right">{money(it.unitPence, doc.currency)}</td>
+                <td className="px-2 py-2 text-right">{money(Math.round(it.quantity * it.unitPence), doc.currency)}</td>
               </tr>
             ))}
           </tbody>
@@ -95,7 +99,7 @@ export default async function PublicDoc({ params, searchParams }: Props) {
               <span>{money(doc.total_pence - doc.subtotal_pence, doc.currency)}</span>
             </p>
           )}
-          <p className="flex justify-between border-t border-neutral-200 pt-2 text-lg font-bold">
+          <p className="flex justify-between rounded-lg px-3 py-2 text-lg font-bold" style={accent}>
             <span>Total</span>
             <span>{money(doc.total_pence, doc.currency)}</span>
           </p>
@@ -111,7 +115,7 @@ export default async function PublicDoc({ params, searchParams }: Props) {
             ) : (
               <form action={acceptQuote}>
                 <input type="hidden" name="token" value={token} />
-                <button className="w-full rounded-xl bg-emerald-600 px-4 py-4 text-lg font-semibold text-white">Accept quote</button>
+                <button className="w-full rounded-xl px-4 py-4 text-lg font-semibold" style={accent}>Accept quote</button>
                 <p className="mt-2 text-center text-xs text-neutral-500">Questions? Reply to the text this came from.</p>
               </form>
             )}
@@ -126,7 +130,8 @@ export default async function PublicDoc({ params, searchParams }: Props) {
               <div className="space-y-3">
                 <h2 className="font-semibold">How to pay</h2>
                 {inv.paymentLink && (
-                  <a href={inv.paymentLink} target="_blank" rel="noreferrer" className="block w-full rounded-xl bg-[#2a78d6] px-4 py-4 text-center text-lg font-semibold text-white print:hidden">
+                  <a href={inv.paymentLink} target="_blank" rel="noreferrer" className="block w-full rounded-xl px-4 py-4 text-center text-lg font-semibold print:hidden"
+                    style={accent}>
                     Pay {money(doc.total_pence, doc.currency)} by card
                   </a>
                 )}
@@ -146,6 +151,10 @@ export default async function PublicDoc({ params, searchParams }: Props) {
             )}
           </div>
         )}
+        <a href={`/d/${token}/pdf?download=1`} className="mt-6 block w-full rounded-xl px-4 py-3 text-center font-medium text-neutral-700 ring-1 ring-neutral-300 print:hidden">
+          Download PDF
+        </a>
+        </div>
       </div>
       <p className="mt-4 text-center text-xs text-neutral-400 print:hidden">Sent with ASC Development</p>
     </div>

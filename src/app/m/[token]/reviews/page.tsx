@@ -13,6 +13,8 @@ type JobRow = {
   created_at: string;
   source: string;
   review_clicked_at: string | null;
+  rating: number | null;
+  feedback_at: string | null;
   cancelled_reason: string | null;
   contact_id: string;
   contacts: { name: string | null; phone: string } | null;
@@ -29,7 +31,7 @@ export default async function Reviews({ params, searchParams }: { params: Promis
   const [{ data: jobs }, unread] = await Promise.all([
     db()
       .from("jobs")
-      .select("id, created_at, source, review_clicked_at, cancelled_reason, contact_id, contacts(name, phone), review_messages(step, sent_at, cancelled_at)")
+      .select("id, created_at, source, review_clicked_at, rating, feedback_at, cancelled_reason, contact_id, contacts(name, phone), review_messages(step, sent_at, cancelled_at)")
       .eq("client_id", c.id)
       .order("created_at", { ascending: false })
       .limit(50)
@@ -102,7 +104,9 @@ export default async function Reviews({ params, searchParams }: { params: Promis
 }
 
 function jobStatus(j: JobRow): { label: string; tone: string } {
-  if (j.review_clicked_at) return { label: "Opened link", tone: "bg-green-100 text-green-800" };
+  if (j.rating && j.rating >= 4) return { label: `${j.rating}★, sent to Google`, tone: "bg-green-100 text-green-800" };
+  if (j.rating) return { label: `${j.rating}★${j.feedback_at ? ", left feedback" : ""}`, tone: "bg-amber-100 text-amber-900" };
+  if (j.review_clicked_at) return { label: "Opened Google link", tone: "bg-green-100 text-green-800" };
   if (j.cancelled_reason === "opted_out") return { label: "Opted out", tone: "bg-neutral-100 text-neutral-600" };
   const sent = j.review_messages.filter((m) => m.sent_at).length;
   const pending = j.review_messages.some((m) => !m.sent_at && !m.cancelled_at);

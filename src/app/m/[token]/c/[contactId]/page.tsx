@@ -47,7 +47,7 @@ export default async function Thread({ params, searchParams }: Props) {
     db().from("calls").select("created_at, text_sent, skipped_reason").eq("contact_id", contact.id).returns<{ created_at: string; text_sent: boolean; skipped_reason: string | null }[]>(),
     db().from("sms_log").select("created_at, body, status, kind").eq("contact_id", contact.id).in("kind", ["missed_call", "review", "manual"]).returns<{ created_at: string; body: string; status: string; kind: string }[]>(),
     db().from("replies").select("created_at, body").eq("contact_id", contact.id).returns<{ created_at: string; body: string | null }[]>(),
-    db().from("jobs").select("created_at, review_clicked_at").eq("contact_id", contact.id).returns<{ created_at: string; review_clicked_at: string | null }[]>(),
+    db().from("jobs").select("created_at, review_clicked_at, rating, rated_at").eq("contact_id", contact.id).returns<{ created_at: string; review_clicked_at: string | null; rating: number | null; rated_at: string | null }[]>(),
     db().from("contact_notes").select("created_at, body").eq("contact_id", contact.id).returns<{ created_at: string; body: string }[]>(),
     db().from("appointments").select("id, created_at, starts_at, title, status").eq("contact_id", contact.id).returns<{ id: string; created_at: string; starts_at: string; title: string; status: string }[]>(),
     db().from("documents").select("id, kind, number, total_pence, currency, sent_at, accepted_at, paid_at").eq("contact_id", contact.id).returns<{ id: string; kind: string; number: number; total_pence: number; currency: string; sent_at: string | null; accepted_at: string | null; paid_at: string | null }[]>(),
@@ -60,7 +60,8 @@ export default async function Thread({ params, searchParams }: Props) {
     ...(replies ?? []).map((x): Item => ({ kind: "in", at: x.created_at, body: x.body ?? "" })),
     ...(jobs ?? []).flatMap((j): Item[] => [
       { kind: "event", at: j.created_at, note: "Job marked done, review request scheduled" },
-      ...(j.review_clicked_at ? [{ kind: "event", at: j.review_clicked_at, note: "Opened the review link" } as Item] : []),
+      ...(j.rating && j.rated_at ? [{ kind: "event", at: j.rated_at, note: `Rated you ${j.rating}/5 ${"★".repeat(j.rating)}${j.rating >= 4 ? ", sent on to Google" : ""}` } as Item] : []),
+      ...(j.review_clicked_at && !(j.rating && j.rating >= 4) ? [{ kind: "event", at: j.review_clicked_at, note: "Opened the Google review link" } as Item] : []),
     ]),
     ...(notes ?? []).map((n): Item => ({ kind: "note", at: n.created_at, body: n.body })),
     ...(appts ?? []).map((a): Item => ({ kind: "event", at: a.created_at, note: `Booked: ${a.title}, ${fullWhen(a.starts_at, tz, localeFor(c.country))}${a.status === "cancelled" ? " (cancelled)" : ""}`, href: `/m/${token}/calendar/${a.id}` })),
