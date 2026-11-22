@@ -7,6 +7,7 @@ import { launchEmail, sendEmail, welcomeEmail } from "@/lib/email";
 import { firstNameOf, formLink, startOnboarding } from "@/lib/onboarding";
 import { once } from "@/lib/clients";
 import { isTextable, normalizePhone } from "@/lib/phone";
+import { EMERGENCY_AFTER_HOURS } from "@/lib/sms";
 
 // Every route under /admin is behind the Basic auth in src/proxy.ts, including these actions.
 
@@ -73,6 +74,7 @@ export async function addClientQuietly(formData: FormData) {
       form_submitted_at: now,
       status: /^https?:\/\//.test(liveUrl) ? "live" : "building",
       live_url: /^https?:\/\//.test(liveUrl) ? liveUrl : null,
+      missed_call_after_hours_template: formData.get("emergency") === "on" ? EMERGENCY_AFTER_HOURS.GB : null,
     })
     .select("id")
     .single<{ id: string }>();
