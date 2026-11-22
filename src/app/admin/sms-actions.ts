@@ -19,7 +19,7 @@ async function saveSmsSettingsInner(formData: FormData) {
   const twilioNumber = text(formData, "twilio_number");
   const ownerMobile = text(formData, "owner_mobile");
   const reviewUrl = text(formData, "google_review_url");
-  const enabled = formData.get("sms_enabled") === "on";
+  const wantsTexts = formData.get("sms_enabled") === "on";
 
   const country: Country = formData.get("country") === "US" ? "US" : "GB";
   const twilio = twilioNumber ? normalizePhone(twilioNumber, country) : null;
@@ -28,7 +28,9 @@ async function saveSmsSettingsInner(formData: FormData) {
   if (twilioNumber && !twilio) throw new Error("Twilio number doesn't look right");
   if (ownerMobile && !owner) throw new Error("Owner mobile doesn't look right");
   if (reviewUrl && !/^https:\/\//.test(reviewUrl)) throw new Error("Review link must start with https://");
-  if (enabled && (!twilio || !owner)) throw new Error("Set the Twilio number and owner mobile before switching texts on");
+  // Texts can only be on once there's a number and an owner mobile. Save everything else either way;
+  // "Set up phone" switches texts on when it buys the number.
+  const enabled = wantsTexts && !!twilio && !!owner;
 
   const { error } = await db()
     .from("clients")
