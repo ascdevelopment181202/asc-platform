@@ -5,6 +5,9 @@ import { displayPhone, localeFor } from "@/lib/phone";
 import { loadClient, shortWhen, unreadTotal } from "../data";
 import { AppShell, Flash } from "../ui";
 import { bulkUpload, jobDone } from "../actions";
+import { ShareLink } from "./share-link";
+import { env } from "@/lib/env";
+import { brandOf } from "@/lib/brand";
 
 export const dynamic = "force-dynamic";
 
@@ -60,6 +63,15 @@ export default async function Reviews({ params, searchParams }: { params: Promis
               Or text <strong>DONE {c.country === "US" ? "2145550123" : "07700900123"} Sarah</strong> to {displayPhone(c.twilio_number)} from your phone.
             </p>
           )}
+        </section>
+
+        <section className="rounded-2xl bg-white p-4 shadow-sm">
+          <h2 className="text-lg font-semibold">Your review page</h2>
+          <p className="mt-0.5 text-sm text-neutral-600">
+            Happy customers (4 or 5 stars) go straight to Google. Anyone less happy tells you privately first, so you can put it right. Every review text uses it automatically. Share the link anywhere else too: WhatsApp, email, a QR code on your van.
+          </p>
+          {!c.google_review_url && <p className="mt-2 rounded-lg bg-amber-50 p-2 text-sm text-amber-900">Your Google review link isn&apos;t set yet. ASC will add it.</p>}
+          <ShareLink url={`${env.appUrl}/r/${c.review_slug}`} business={brandOf(c).name} />
         </section>
 
         <section className="rounded-2xl bg-white shadow-sm">

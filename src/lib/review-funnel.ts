@@ -50,3 +50,10 @@ export async function savePrivateFeedback({ job, c, customerName }: FunnelData, 
     tag: `review-${job.id}`,
   });
 }
+
+/** The business behind a shareable review page (/r/<slug>). */
+export async function loadClientBySlug(slug: string): Promise<Client | null> {
+  if (!/^[0-9a-f]{10}$/.test(slug)) return null;
+  const { data } = await db().from("clients").select("*").eq("review_slug", slug).maybeSingle<Client>();
+  return data;
+}
