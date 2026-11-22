@@ -45,3 +45,28 @@ export async function saveBranding(f: FormData) {
   revalidatePath(back);
   redirect(`${back}?brand_ok=1#brand`);
 }
+
+/** Which Google Business Profile this client's reviews come from, then pulls them in straight away. */
+export async function saveReviewLocation(f: FormData) {
+  const id = str(f, "clientId");
+  const value = str(f, "location");
+  const [location, ...title] = value.split("|");
+  await db()
+    .from("clients")
+    .update({ gbp_location: location || null, gbp_title: title.join("|") || null, gbp_reviews_path: null, reviews_synced_at: null })
+    .eq("id", id);
+  let msg = location ? "Google profile linked." : "Google profile unlinked.";
+  if (location) {
+    const { data: c } = await db().from("clients").select("*").eq("id", id).single<Client>();
+    try {
+      const { syncReviews } = await import("@/lib/google-reviews");
+      await syncReviews(c!);
+      const { count } = await db().from("google_reviews").select("id", { count: "exact", head: true }).eq("client_id", id);
+      msg += ` ${count ?? 0} reviews pulled in.`;
+    } catch (e) {
+      msg = `Saved, but Google said: ${e instanceof Error ? e.message : e}`;
+    }
+  }
+  revalidatePath(`/admin/clients/${id}`);
+  redirect(`/admin/clients/${id}?ok=${encodeURIComponent(msg)}`);
+}

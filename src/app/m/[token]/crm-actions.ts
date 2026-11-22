@@ -4,9 +4,10 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/supabase";
 import { isTextable, normalizePhone } from "@/lib/phone";
-import { countryOf, createJob, upsertContact, type Stage } from "@/lib/sms";
+import { BULK_PER_DAY, countryOf, createJob, upsertContact, type Contact, type Stage } from "@/lib/sms";
 import { parseMoney, setStage, STAGES } from "@/lib/crm";
 import { clientFromForm, loadContact } from "./data";
+import { dueFrom } from "@/lib/tasks";
 
 const str = (f: FormData, k: string) => String(f.get(k) ?? "").trim();
 const back = (path: string, type: "ok" | "err", msg: string): never => redirect(`${path}${path.includes("?") ? "&" : "?"}${type}=${encodeURIComponent(msg)}`);
@@ -107,4 +108,106 @@ export async function deleteSnippet(f: FormData) {
   const c = await clientFromForm(f);
   await db().from("snippets").delete().eq("id", str(f, "id")).eq("client_id", c.id);
   redirect(`/m/${c.dashboard_token}/more/templates`);
+}
+
+/** Brings in customers from a CSV or vCard (parsed and previewed in the browser). Existing numbers are updated, not doubled. */
+export async function importContacts(f: FormData) {
+  const c = await clientFromForm(f);
+  const page = `/m/${c.dashboard_token}/contacts/import`;
+  const country = countryOf(c);
+  let raw: { name?: string; phone?: string; email?: string; address?: string }[] = [];
+  try {
+    raw = JSON.parse(str(f, "rows"));
+  } catch {
+    return back(page, "err", "Couldn't read that list. Try the file again.");
+  }
+  const extraTags = tagsFrom(str(f, "tags"));
+  const byPhone = new Map<string, { name: string | null; email: string | null; address: string | null }>();
+  let bad = 0;
+  for (const r of raw.slice(0, 2000)) {
+    const phone = normalizePhone(String(r.phone ?? ""), country);
+    if (!phone) {
+      bad++;
+      continue;
+    }
+    const prev = byPhone.get(phone);
+    byPhone.set(phone, {
+      name: String(r.name ?? "").trim().slice(0, 120) || prev?.name || null,
+      email: String(r.email ?? "").trim().slice(0, 200) || prev?.email || null,
+      address: String(r.address ?? "").trim().slice(0, 300) || prev?.address || null,
+    });
+  }
+  if (!byPhone.size) return back(page, "err", "None of those numbers looked right.");
+
+  const phones = [...byPhone.keys()];
+  const existing = new Map<string, Contact>();
+  for (let i = 0; i < phones.length; i += 200) {
+    const { data } = await db().from("contacts").select("*").eq("client_id", c.id).in("phone", phones.slice(i, i + 200)).returns<Contact[]>();
+    for (const x of data ?? []) existing.set(x.phone, x);
+  }
+
+  const fresh = phones
+    .filter((p) => !existing.has(p))
+    .map((p) => ({ client_id: c.id, phone: p, ...byPhone.get(p)!, tags: extraTags }));
+  for (let i = 0; i < fresh.length; i += 500) {
+    const { error } = await db().from("contacts").insert(fresh.slice(i, i + 500));
+    if (error) {
+      console.error("import insert failed", error);
+      return back(page, "err", "Something went wrong saving them. Nothing was lost, try again.");
+    }
+  }
+  let updated = 0;
+  for (const [phone, cur] of existing) {
+    const inc = byPhone.get(phone)!;
+    const patch: Record<string, unknown> = {};
+    if (inc.name && !cur.name) patch.name = inc.name;
+    if (inc.email && !cur.email) patch.email = inc.email;
+    if (inc.address && !cur.address) patch.address = inc.address;
+    const tags = [...new Set([...(cur.tags ?? []), ...extraTags])];
+    if (tags.length !== (cur.tags ?? []).length) patch.tags = tags.slice(0, 10);
+    if (Object.keys(patch).length) {
+      await db().from("contacts").update(patch).eq("id", cur.id);
+      updated++;
+    }
+  }
+
+  let asked = 0;
+  if (f.get("review") === "on") {
+    const start = Date.now() + 10 * 60_000;
+    for (const phone of phones.filter((p) => isTextable(p, country)).slice(0, 500)) {
+      const startAt = new Date(start + Math.floor(asked / BULK_PER_DAY) * 86400_000);
+      const r = await createJob(c, { phone, name: byPhone.get(phone)!.name, source: "bulk", startAt });
+      if (r.ok) asked++;
+    }
+  }
+
+  revalidatePath(`/m/${c.dashboard_token}/contacts`);
+  const parts = [`Imported ${fresh.length} new customer${fresh.length === 1 ? "" : "s"}`];
+  if (existing.size) parts.push(`${existing.size} already here${updated ? ` (${updated} updated)` : ""}`);
+  if (bad) parts.push(`${bad} skipped with no valid number`);
+  if (asked) parts.push(`${asked} will get a review request`);
+  return back(`/m/${c.dashboard_token}/contacts`, "ok", `${parts.join(", ")}.`);
+}
+
+/** A follow-up for the owner, optionally tied to a customer. The cron sends a push when it's due. */
+export async function addTask(f: FormData) {
+  const c = await clientFromForm(f);
+  const token = c.dashboard_token;
+  const page = safeBack(f, token, `/m/${token}/tasks`);
+  const title = str(f, "title").slice(0, 200);
+  if (!title) return back(page, "err", "Say what needs doing.");
+  let contactId: string | null = str(f, "contactId") || null;
+  if (contactId && !(await loadContact(c.id, contactId))) contactId = null;
+  const due = dueFrom(str(f, "when"), str(f, "date"), str(f, "time"), c.timezone || "Europe/London");
+  await db().from("contact_tasks").insert({ client_id: c.id, contact_id: contactId, title, due_at: due.toISOString() });
+  revalidatePath(`/m/${token}/tasks`);
+  return back(page, "ok", "Task added. We'll remind you.");
+}
+
+export async function finishTask(f: FormData) {
+  const c = await clientFromForm(f);
+  const token = c.dashboard_token;
+  await db().from("contact_tasks").update({ done_at: new Date().toISOString() }).eq("client_id", c.id).eq("id", str(f, "taskId"));
+  revalidatePath(`/m/${token}/tasks`);
+  return back(safeBack(f, token, `/m/${token}/tasks`), "ok", "Done ✓");
 }

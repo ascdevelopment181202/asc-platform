@@ -8,6 +8,7 @@ import { AppShell, Avatar, Flash } from "./ui";
 import { AutoRefresh } from "./auto-refresh";
 import { NotificationsToggle } from "./notifications";
 import { vapidPublicKey } from "@/lib/push";
+import { dueTodayCount } from "@/lib/tasks";
 
 export const dynamic = "force-dynamic";
 
@@ -41,10 +42,11 @@ export default async function Inbox({ params, searchParams }: Props) {
     const safe = q.replace(/[%,()]/g, "");
     query = digits.length >= 3 ? query.or(`name.ilike.%${safe}%,phone.ilike.%${digits}%`) : query.ilike("name", `%${safe}%`);
   }
-  const [{ data: rows }, unread, publicKey] = await Promise.all([
+  const [{ data: rows }, unread, publicKey, tasksDue] = await Promise.all([
     query.order("last_message_at", { ascending: false }).limit(100).returns<Contact[]>(),
     unreadTotal(c.id),
     vapidPublicKey(),
+    dueTodayCount(c.id, tz),
   ]);
   const contacts = rows ?? [];
 
@@ -67,6 +69,12 @@ export default async function Inbox({ params, searchParams }: Props) {
       <AutoRefresh seconds={10} />
       <Flash ok={sp.ok} err={sp.err} />
       <NotificationsToggle token={token} publicKey={publicKey} compact />
+      {tasksDue > 0 && (
+        <Link href={`/m/${token}/tasks`} className="mx-4 mt-3 flex items-center justify-between rounded-xl bg-amber-50 px-4 py-2.5 text-sm font-medium text-amber-900 ring-1 ring-amber-200">
+          <span>✅ {tasksDue} follow-up{tasksDue === 1 ? "" : "s"} due today</span>
+          <span>→</span>
+        </Link>
+      )}
 
       <div className="sticky top-[61px] z-10 space-y-2 bg-[#f4f5f7] px-4 pb-2 pt-3">
         <form action={`/m/${token}`} className="relative">

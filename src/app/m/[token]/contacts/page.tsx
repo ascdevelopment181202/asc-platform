@@ -5,12 +5,12 @@ import { displayPhone } from "@/lib/phone";
 import type { Contact } from "@/lib/sms";
 import { stageInfo } from "@/lib/crm";
 import { loadClient, unreadTotal } from "../data";
-import { AppShell, Avatar, PlusButton } from "../ui";
+import { AppShell, Avatar, Flash, PlusButton } from "../ui";
 
 export const dynamic = "force-dynamic";
 
 /** Every customer, A to Z, with search and tag filters. */
-export default async function Contacts({ params, searchParams }: { params: Promise<{ token: string }>; searchParams: Promise<{ q?: string; tag?: string }> }) {
+export default async function Contacts({ params, searchParams }: { params: Promise<{ token: string }>; searchParams: Promise<{ q?: string; tag?: string; ok?: string; err?: string }> }) {
   const { token } = await params;
   const sp = await searchParams;
   const c = await loadClient(token);
@@ -35,11 +35,17 @@ export default async function Contacts({ params, searchParams }: { params: Promi
 
   return (
     <AppShell token={token} active="contacts" unread={unread} title="Contacts" action={<PlusButton href={`/m/${token}/contacts/new`} label="New contact" />}>
+      <Flash ok={sp.ok} err={sp.err} />
       <div className="sticky top-[61px] z-10 space-y-2 bg-[#f4f5f7] px-4 pb-2 pt-3">
         <form action={`/m/${token}/contacts`}>
           {tag && <input type="hidden" name="tag" value={tag} />}
           <input name="q" defaultValue={q} placeholder="Search name, number, email or address" className="w-full rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-base" />
         </form>
+        {!q && !tag && (
+          <Link href={`/m/${token}/contacts/import`} className="block rounded-xl bg-white px-4 py-2.5 text-sm font-medium text-[#2a78d6] ring-1 ring-neutral-200 active:bg-neutral-50">
+            Import customers from a file or your phone →
+          </Link>
+        )}
         {allTags.length > 0 && (
           <div className="flex gap-1.5 overflow-x-auto">
             <Link href={`/m/${token}/contacts${q ? `?q=${encodeURIComponent(q)}` : ""}`} className={`shrink-0 rounded-full px-3 py-1 text-sm ${!tag ? "bg-neutral-900 text-white" : "bg-white ring-1 ring-neutral-200"}`}>

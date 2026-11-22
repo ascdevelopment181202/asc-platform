@@ -5,6 +5,8 @@ import { notifyAdmin } from "@/lib/email";
 import { inSendingWindow, reviewText, sendSms, type Contact, type Job } from "@/lib/sms";
 import { whenLabel, zonedParts, type Appointment } from "@/lib/crm";
 import { notifyClient } from "@/lib/push";
+import { syncReviews } from "@/lib/google-reviews";
+import { googleEnabled } from "@/lib/env";
 import { displayPhone } from "@/lib/phone";
 
 export const runtime = "nodejs";
@@ -129,6 +131,47 @@ export async function GET(request: Request) {
         `${env.appUrl}/admin/clients/${c.id}`,
       ]),
     ).catch((err) => skipped.push(`forwarding check ${clientLabel(c)}: ${err instanceof Error ? err.message : err}`));
+  }
+
+  // Follow-up tasks that have come due: one push each.
+  const { data: dueTasks } = await db()
+    .from("contact_tasks")
+    .select("id, title, client_id, contact_id, contacts(name), clients(dashboard_token)")
+    .is("done_at", null)
+    .is("notified_at", null)
+    .lte("due_at", now.toISOString())
+    .limit(100)
+    .returns<{ id: string; title: string; client_id: string; contact_id: string | null; contacts: { name: string | null } | null; clients: { dashboard_token: string } | null }[]>();
+  for (const t of dueTasks ?? []) {
+    await db().from("contact_tasks").update({ notified_at: now.toISOString() }).eq("id", t.id).is("notified_at", null);
+    const who = t.contacts?.name ? ` · ${t.contacts.name}` : "";
+    await notifyClient(t.client_id, {
+      title: `✅ ${t.title}${who}`,
+      body: "Due now. Tap to open, then tick it off when it's done.",
+      url: t.contact_id ? `/m/${t.clients?.dashboard_token}/contacts/${t.contact_id}` : `/m/${t.clients?.dashboard_token}/tasks`,
+    }).catch(() => {});
+    sent.push(`task due: ${t.title}`);
+  }
+
+  // Google reviews: refresh a few clients each run, each at most every 30 minutes.
+  if (googleEnabled()) {
+    const { data: due } = await db()
+      .from("clients")
+      .select("*")
+      .neq("status", "cancelled")
+      .or(`reviews_synced_at.is.null,reviews_synced_at.lt.${new Date(now.getTime() - 30 * 60_000).toISOString()}`)
+      .order("reviews_synced_at", { ascending: true, nullsFirst: true })
+      .limit(5)
+      .returns<Client[]>();
+    for (const c of due ?? []) {
+      try {
+        const { added } = await syncReviews(c);
+        if (added) sent.push(`${added} new Google review(s) for ${clientLabel(c)}`);
+      } catch (err) {
+        await db().from("clients").update({ reviews_synced_at: now.toISOString() }).eq("id", c.id);
+        skipped.push(`reviews ${clientLabel(c)}: ${err instanceof Error ? err.message : err}`);
+      }
+    }
   }
 
   // Evening nudge at 6pm their time: "finished any jobs?", so review requests actually get sent.

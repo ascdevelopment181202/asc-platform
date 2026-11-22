@@ -19,7 +19,7 @@ import { resendPhoneWelcome, saveSmsSettings, sendTestText, setUpPhone } from ".
 import { countryOf, EMERGENCY_AFTER_HOURS, TEMPLATE_HELP, templatesFor } from "@/lib/sms";
 import { displayUk, forwardingCodes } from "@/lib/phone";
 import { a2pStatus } from "@/lib/twilio";
-import { saveBranding } from "../../brand-actions";
+import { saveBranding, saveReviewLocation } from "../../brand-actions";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -91,8 +91,8 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
   let gscSites: string[] | null = null;
   let gbpLocations: GbpLocation[] | null = null;
   let gError = "";
-  if (site && gConnected) {
-    const [a, b] = await Promise.allSettled([listSearchConsoleSites(), listBusinessLocations()]);
+  if (gConnected) {
+    const [a, b] = await Promise.allSettled([site ? listSearchConsoleSites() : Promise.resolve([] as string[]), listBusinessLocations()]);
     if (a.status === "fulfilled") gscSites = a.value;
     else gError += `Search Console: ${a.reason instanceof Error ? a.reason.message : a.reason}. `;
     if (b.status === "fulfilled") gbpLocations = b.value;
@@ -250,6 +250,33 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
                     ))}
                   </ul>
                 )}
+              </div>
+              <div>
+                <p className="font-medium">Google reviews in their app</p>
+                {c.google_rating ? (
+                  <p className="text-neutral-600">
+                    {Number(c.google_rating).toFixed(1)}★ from {c.google_review_count} reviews{c.reviews_synced_at ? ` · checked ${fmt(c.reviews_synced_at)}` : ""}
+                  </p>
+                ) : (
+                  <p className="text-neutral-600">Pick their Business Profile so new reviews show in their app, ping their phone, and can be replied to there.</p>
+                )}
+                {!gConnected ? (
+                  <p className="mt-1 text-xs text-neutral-500">Connect Google on the dashboard first.</p>
+                ) : gbpLocations ? (
+                  <form action={saveReviewLocation} className="mt-2 flex gap-2">
+                    <input type="hidden" name="clientId" value={c.id} />
+                    <select name="location" defaultValue={c.gbp_location ? `${c.gbp_location}|${c.gbp_title ?? ""}` : site?.gbp_location ? `${site.gbp_location}|${site.gbp_title ?? ""}` : ""} className={input}>
+                      <option value="">Not linked</option>
+                      {gbpLocations.map((l) => (
+                        <option key={l.name} value={`${l.name}|${l.title}`}>{l.title}{l.address ? `, ${l.address}` : ""}</option>
+                      ))}
+                    </select>
+                    <button className={btnQuiet}>Save</button>
+                  </form>
+                ) : (
+                  <p className="mt-1 text-xs text-red-700">{gError || "Couldn't list Business Profiles."}</p>
+                )}
+                {gbpLocations && gbpLocations.length === 0 && <p className="mt-1 text-xs text-neutral-500">No profiles visible. Ask them to add {env.googleManagerEmail} as a Manager.</p>}
               </div>
               <div>
                 <p className="font-medium">Quotes and invoices</p>

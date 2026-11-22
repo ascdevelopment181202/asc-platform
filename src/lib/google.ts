@@ -75,7 +75,7 @@ export class GoogleNotConnected extends Error {
   }
 }
 
-async function gapi<T>(url: string, init?: { method?: string; body?: unknown }): Promise<T> {
+export async function gapi<T>(url: string, init?: { method?: string; body?: unknown }): Promise<T> {
   const res = await fetch(url, {
     method: init?.method ?? "GET",
     headers: { authorization: `Bearer ${await accessToken()}`, ...(init?.body ? { "content-type": "application/json" } : {}) },

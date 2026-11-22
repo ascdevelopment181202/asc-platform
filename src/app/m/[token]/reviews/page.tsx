@@ -8,6 +8,8 @@ import { bulkUpload, jobDone } from "../actions";
 import { ShareLink } from "./share-link";
 import { env } from "@/lib/env";
 import { brandOf } from "@/lib/brand";
+import type { GoogleReview } from "@/lib/google-reviews";
+import { refreshReviews } from "./google-actions";
 
 export const dynamic = "force-dynamic";
 
@@ -19,6 +21,7 @@ type JobRow = {
   rating: number | null;
   feedback_at: string | null;
   cancelled_reason: string | null;
+  reviewed_at: string | null;
   contact_id: string;
   contacts: { name: string | null; phone: string } | null;
   review_messages: { step: number; sent_at: string | null; cancelled_at: string | null }[];
@@ -31,16 +34,19 @@ export default async function Reviews({ params, searchParams }: { params: Promis
   const c = await loadClient(token);
   if (!c) notFound();
   const tz = c.timezone || "Europe/London";
-  const [{ data: jobs }, unread] = await Promise.all([
+  const [{ data: jobs }, unread, { data: gReviews }] = await Promise.all([
     db()
       .from("jobs")
-      .select("id, created_at, source, review_clicked_at, rating, feedback_at, cancelled_reason, contact_id, contacts(name, phone), review_messages(step, sent_at, cancelled_at)")
+      .select("id, created_at, source, review_clicked_at, rating, feedback_at, cancelled_reason, reviewed_at, contact_id, contacts(name, phone), review_messages(step, sent_at, cancelled_at)")
       .eq("client_id", c.id)
       .order("created_at", { ascending: false })
       .limit(50)
       .returns<JobRow[]>(),
     unreadTotal(c.id),
+    db().from("google_reviews").select("*").eq("client_id", c.id).order("created_at", { ascending: false }).limit(20).returns<GoogleReview[]>(),
   ]);
+  const reviews = gReviews ?? [];
+  const needReply = reviews.filter((r) => !r.reply).length;
   const ready = c.sms_enabled && !!c.twilio_number;
 
   return (
@@ -48,6 +54,47 @@ export default async function Reviews({ params, searchParams }: { params: Promis
       <Flash ok={sp.ok} err={sp.err} />
       <div className="space-y-4 p-4">
         {!ready && <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">Texts aren&apos;t switched on yet. ASC will let you know when everything is live.</p>}
+
+        <section className="rounded-2xl bg-white shadow-sm">
+          <div className="flex items-start justify-between gap-3 px-4 pt-4">
+            <div>
+              <h2 className="text-lg font-semibold">Your Google reviews</h2>
+              {c.google_rating ? (
+                <p className="text-sm text-neutral-600">
+                  <span className="font-semibold text-amber-600">{Number(c.google_rating).toFixed(1)}★</span> from {c.google_review_count ?? reviews.length} review{(c.google_review_count ?? reviews.length) === 1 ? "" : "s"}
+                  {needReply ? ` · ${needReply} waiting for a reply` : ""}
+                </p>
+              ) : (
+                <p className="text-sm text-neutral-600">{c.gbp_location || reviews.length ? "Checking Google every 30 minutes." : "ASC is linking your Google profile. Your reviews will show here."}</p>
+              )}
+            </div>
+            {(c.gbp_location || reviews.length > 0) && (
+              <form action={refreshReviews}>
+                <input type="hidden" name="token" value={token} />
+                <button className="rounded-full bg-neutral-100 px-3 py-1.5 text-xs font-medium text-neutral-700 active:bg-neutral-200">Refresh</button>
+              </form>
+            )}
+          </div>
+          {reviews.length > 0 && (
+            <ul className="mt-2 divide-y divide-neutral-100">
+              {reviews.map((r) => (
+                <li key={r.id}>
+                  <Link href={`/m/${token}/reviews/g/${r.id}`} className="flex items-start justify-between gap-3 px-4 py-3 active:bg-neutral-50">
+                    <div className="min-w-0">
+                      <p className="truncate font-medium">
+                        <span className="text-amber-500">{"★".repeat(r.rating ?? 0)}</span> {r.reviewer_name ?? "A Google user"}
+                        {!r.seen_at && <span className="ml-1.5 inline-block h-2 w-2 rounded-full bg-[#2a78d6] align-middle" />}
+                      </p>
+                      <p className="line-clamp-2 text-sm text-neutral-600">{r.comment ?? "Rating only"}</p>
+                    </div>
+                    <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-medium ${r.reply ? "bg-neutral-100 text-neutral-600" : "bg-blue-50 text-blue-800"}`}>{r.reply ? "Replied" : "Reply"}</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="pb-2" />
+        </section>
 
         <section className="rounded-2xl bg-white p-4 shadow-sm">
           <h2 className="text-lg font-semibold">Finished a job?</h2>
@@ -119,6 +166,7 @@ export default async function Reviews({ params, searchParams }: { params: Promis
 }
 
 function jobStatus(j: JobRow): { label: string; tone: string } {
+  if (j.reviewed_at) return { label: "Reviewed on Google ✓", tone: "bg-green-100 text-green-800" };
   if (j.rating && j.rating >= 4) return { label: `${j.rating}★, sent to Google`, tone: "bg-green-100 text-green-800" };
   if (j.rating) return { label: `${j.rating}★${j.feedback_at ? ", left feedback" : ""}`, tone: "bg-amber-100 text-amber-900" };
   if (j.review_clicked_at) return { label: "Opened Google link", tone: "bg-green-100 text-green-800" };
