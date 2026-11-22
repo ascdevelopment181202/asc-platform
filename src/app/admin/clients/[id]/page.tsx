@@ -355,12 +355,15 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
                 <p className="mb-2">
                   One click: buys a {c.country === "US" ? "US local number near them (about $1.15/month) with its own Messaging Service" : "UK mobile number (about £1.89/month)"}, points it at the app, switches texts on, and texts and emails {c.owner_mobile ? displayUk(c.owner_mobile) : "the owner"} their app link and forwarding codes.
                 </p>
+                <label className="mb-2 flex items-center gap-2">
+                  <input type="checkbox" name="quiet" /> Don&apos;t notify the client yet (buy and connect the number only)
+                </label>
                 <button className={`${btn} w-full`} disabled={!c.owner_mobile}>{c.owner_mobile ? "Set up phone" : "Needs the owner's mobile first"}</button>
               </form>
             ) : (
               <form action={resendPhoneWelcome} className="mb-3">
                 <input type="hidden" name="clientId" value={c.id} />
-                <button className={`${btnQuiet} w-full`}>Resend app link and forwarding codes</button>
+                <button className={`${btnQuiet} w-full`}>Send app link and forwarding codes to the client</button>
               </form>
             )}
             <form action={saveSmsSettings} className="space-y-2 text-sm">

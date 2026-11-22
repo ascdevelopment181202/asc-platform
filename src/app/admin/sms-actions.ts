@@ -77,7 +77,7 @@ async function sendTestTextInner(formData: FormData) {
 /** One click after the onboarding form (also runs automatically for UK clients when they submit it). */
 async function setUpPhoneInner(formData: FormData) {
   const id = String(formData.get("clientId"));
-  await setUpPhoneForClient(id);
+  await setUpPhoneForClient(id, { notify: formData.get("quiet") !== "on" });
   revalidatePath(`/admin/clients/${id}`);
 }
 
@@ -113,7 +113,14 @@ export async function sendTestText(formData: FormData) {
 }
 
 export async function setUpPhone(formData: FormData) {
-  await withFeedback(formData, setUpPhoneInner, "Phone set up. Their app link and forwarding code are on their way.");
+  const quiet = formData.get("quiet") === "on";
+  await withFeedback(
+    formData,
+    setUpPhoneInner,
+    quiet
+      ? "Number bought and connected. Nothing was sent to the client. Click \"Send app link and forwarding codes\" when you're ready."
+      : "Phone set up. Their app link and forwarding code are on their way.",
+  );
 }
 
 export async function resendPhoneWelcome(formData: FormData) {
