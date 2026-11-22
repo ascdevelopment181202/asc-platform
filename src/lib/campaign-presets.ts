@@ -1,32 +1,15 @@
+import { toGsm } from "@/lib/sms-text";
+
 // Ready-made reactivation messages. Shared by the server and the message editor in the browser.
 // {name} = first name, {sender} = "Paul from P.I.C Driveways", {business} = business name.
 
+// Each fits one 160-character text (one charge) with the opt-out line and a typical name like "Paul from P.I.C Driveways".
 export const CAMPAIGN_PRESETS: { key: string; name: string; body: string }[] = [
-  {
-    key: "miss-you",
-    name: "We miss you (10% off)",
-    body: "Hi {name}, it's {sender}. It's been a while! If there's anything you need doing, reply to this text and we'll sort it. 10% off for returning customers until the end of the month.",
-  },
-  {
-    key: "spare-slots",
-    name: "Spare slots this week",
-    body: "Hi {name}, it's {sender}. A couple of slots have opened up next week. If there's a job you've been putting off, reply here and we'll fit you in, with 10% off for past customers.",
-  },
-  {
-    key: "seasonal",
-    name: "Seasonal check-up",
-    body: "Hi {name}, it's {sender}. With the weather turning, now's a good time for a check-up before anything goes wrong. Past customers get 15% off this month. Reply YES and we'll get you booked in.",
-  },
-  {
-    key: "refer",
-    name: "Refer a friend",
-    body: "Hi {name}, it's {sender}. Thanks again for choosing us. If you know anyone who needs a hand, pass on our number and you'll both get 10% off your next job.",
-  },
-  {
-    key: "annual",
-    name: "Annual service reminder",
-    body: "Hi {name}, it's {sender}. It's about a year since we last came out, so you might be due a service. Reply YES and we'll find a time that suits, with £20 off for returning customers.",
-  },
+  { key: "miss-you", name: "We miss you (10% off)", body: "Hi {name}, it's {sender}. It's been a while! Need anything doing? Reply here for 10% off until the end of the month." },
+  { key: "spare-slots", name: "Spare slots this week", body: "Hi {name}, it's {sender}. We've got spare slots next week. Reply here to book, with 10% off for past customers." },
+  { key: "seasonal", name: "Seasonal check-up", body: "Hi {name}, it's {sender}. Winter's coming, a good time for a check-up. 15% off this month, reply YES to book." },
+  { key: "refer", name: "Refer a friend", body: "Hi {name}, it's {sender}. Know anyone who needs a hand? Send them our way and you'll both get 10% off." },
+  { key: "annual", name: "Annual service reminder", body: "Hi {name}, it's {sender}. It's been about a year since our visit. Reply YES to book your service, with \u00a320 off." },
 ];
 
 export const OPT_OUT = "Reply STOP to opt out";
@@ -41,13 +24,7 @@ export function fillCampaign(body: string, vars: { name: string | null; sender: 
     .replace(/\s+/g, " ")
     .trim();
   if (!/reply stop/i.test(text)) text = `${text} ${OPT_OUT}`;
-  return text;
+  return toGsm(text);
 }
 
-/** SMS segments: 160 characters (153 per part when longer), 70 if it has emoji or other special characters. */
-export function segments(text: string) {
-  const gsm = /^[\x20-\x7E£€\n\r]*$/.test(text);
-  const one = gsm ? 160 : 70;
-  const many = gsm ? 153 : 67;
-  return text.length <= one ? 1 : Math.ceil(text.length / many);
-}
+export { segmentsOf as segments } from "@/lib/sms-text";

@@ -1,4 +1,5 @@
 import "server-only";
+import { firstThatFits } from "@/lib/sms-text";
 import { db, type Client } from "@/lib/supabase";
 import { brandOf } from "@/lib/brand";
 import { firstNameOf, senderLine, type Contact } from "@/lib/sms";
@@ -24,5 +25,9 @@ export function referralText(c: Client, contact: Pick<Contact, "name">) {
   const hi = firstNameOf(contact.name) ? `Thanks so much, ${firstNameOf(contact.name)}!` : "Thanks so much!";
   const reach = b.phone ? `they can reach us on ${b.phone}` : "just pass on this number";
   const stop = c.country === "US" ? " Reply STOP to opt out" : "";
-  return `${hi} Your review really means a lot. If you know anyone who needs a hand, ${reach}. ${senderLine(c)}${stop}`;
+  return firstThatFits([
+    `${hi} Your review really means a lot. If you know anyone who needs a hand, ${reach}. ${senderLine(c)}${stop}`,
+    `${hi} Know anyone who needs a hand? ${b.phone ? `They can call us on ${b.phone}` : "Pass on this number"}. ${b.name}${stop}`,
+    `${hi} Know anyone who needs a hand? Pass on our number.${stop}`,
+  ]);
 }

@@ -1,5 +1,6 @@
 "use server";
 
+import { firstThatFits } from "@/lib/sms-text";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/supabase";
 import { clientLabel } from "@/lib/clients";
@@ -79,7 +80,9 @@ export async function sendDocument(f: FormData) {
   if (contact!.opted_out_at) back(page, "err", "This customer replied STOP, so you can't text them. Copy the link and send it another way.");
   const first = contact!.name?.split(/\s+/)[0] || "there";
   const what = doc.kind === "quote" ? `your quote from ${clientLabel(c)} for ${money(doc.total_pence, doc.currency)}` : `your invoice from ${clientLabel(c)} for ${money(doc.total_pence, doc.currency)}`;
-  const r = await sendSms({ client: c, to: contact!.phone, kind: "manual", contactId: contact!.id, body: `Hi ${first}, here's ${what}: ${docLink(doc, env.appUrl)}` });
+  const link = docLink(doc, env.appUrl);
+  const short = `Your ${doc.kind} from ${clientLabel(c)} (${money(doc.total_pence, doc.currency)}): ${link}`;
+  const r = await sendSms({ client: c, to: contact!.phone, kind: "manual", contactId: contact!.id, body: firstThatFits([`Hi ${first}, here's ${what}: ${link}`, short]) });
   if (!r.ok) back(page, "err", "The text didn't send. Copy the link below and send it another way.");
   if (doc.status === "draft") await db().from("documents").update({ status: "sent", sent_at: new Date().toISOString() }).eq("id", doc.id);
   if (doc.kind === "quote") await setStage(contact!, "quoted");

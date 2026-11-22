@@ -74,7 +74,7 @@ export default async function NewCampaign({ params, searchParams }: { params: Pr
           <input type="hidden" name="tag" value={a.tag} />
           <section className="rounded-2xl bg-white p-4 shadow-sm">
             <h2 className="mb-3 font-semibold">2. Your message</h2>
-            <MessageEditor sender={senderLine(c)} business={businessName(c)} sampleName={recipients[0]?.name ?? null} saved={saved ?? []} />
+            <MessageEditor sender={senderLine(c)} business={businessName(c)} sampleName={recipients[0]?.name ?? null} saved={saved ?? []} country={c.country === "US" ? "US" : "GB"} count={n} />
           </section>
           <section className="rounded-2xl bg-white p-4 shadow-sm">
             <h2 className="font-semibold">3. Send</h2>
