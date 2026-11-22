@@ -7,6 +7,8 @@ import { formReceivedEmail, notifyAdmin, sendEmail } from "@/lib/email";
 import { firstNameOf } from "@/lib/onboarding";
 import { describeHours, US_TIMEZONES, FIELD_LABELS, MAX_FILE_MB, MAX_PHOTOS, onboardingSchema, type OnboardingInput } from "@/lib/onboarding-fields";
 import { isTextable, normalizePhone } from "@/lib/phone";
+import { friendlyPhoneError, setUpPhoneForClient } from "@/lib/phone-setup";
+import { after } from "next/server";
 
 const BUILD_HOURS = 48;
 const ALLOWED = /\.(jpe?g|png|webp|heic|heif|gif|svg|pdf|ai|eps)$/i;
@@ -113,6 +115,30 @@ export async function submitOnboarding(token: string, input: OnboardingInput): P
 
   await createTask(client.id, `Build and launch: ${clientLabel(updated)}`, dueAt);
 
+  // UK clients: buy their number and send the welcome straight away, after the form has replied.
+  // US clients wait for you, because their number needs A2P registration alongside it.
+  const autoPhone = country === "GB" && !!updated.owner_mobile && !updated.twilio_number;
+  if (autoPhone) {
+    after(async () => {
+      try {
+        await once(client.id, "auto_phone_setup", async () => {
+          const number = await setUpPhoneForClient(client.id);
+          await notifyAdmin(`Phone live: ${clientLabel(updated)}`, [
+            `Bought ${number} for ${clientLabel(updated)} and sent their welcome text and email.`,
+            "Next: the 2-minute setup call (forwarding code, add app to home screen, live test).",
+            `${env.appUrl}/admin/clients/${client.id}#sms`,
+          ]);
+        });
+      } catch (err) {
+        console.error("Automatic phone setup failed", client.id, err);
+        await notifyAdmin(`Phone setup needs you: ${clientLabel(updated)}`, [
+          `Automatic phone setup for ${clientLabel(updated)} didn't finish: ${friendlyPhoneError(err)}`,
+          `Open their admin page and click "Set up phone": ${env.appUrl}/admin/clients/${client.id}#sms`,
+        ]).catch(() => {});
+      }
+    });
+  }
+
   // Emails are best effort: the form is saved either way.
   try {
     await once(client.id, "form_received_email", () =>
@@ -128,7 +154,7 @@ export async function submitOnboarding(token: string, input: OnboardingInput): P
         "",
         `Logo: ${logoPath ? "uploaded" : "none"}  |  Photos: ${photoPaths.length}${photoPaths.length ? "" : " (use photos from their website or Google)"}`,
         ...(country === "US" ? [`US client: after "Set up phone", register their A2P 10DLC brand and campaign in Twilio (legal name ${answers.legalName}${answers.ein ? `, EIN ${answers.ein}` : ", sole proprietor"}). Texts send once it's verified.`] : []),
-        `Phone: click "Set up phone" on their admin page to buy their number and send their app link.${answers.customersCallMobile === "No" ? ` Customers call ${answers.customersCallNumber}, so forwarding goes on that line.` : ""}`,
+        `Phone: ${autoPhone ? "their UK number is being bought and their welcome sent automatically. Check it's showing on their admin page, then book the 2-minute setup call." : `click "Set up phone" on their admin page to buy their number and send their app link.`}${answers.customersCallMobile === "No" ? ` Customers call ${answers.customersCallNumber}, so forwarding goes on that line.` : ""}`,
         `Dashboard: ${env.appUrl}/admin/clients/${client.id}`,
       ]),
     );
