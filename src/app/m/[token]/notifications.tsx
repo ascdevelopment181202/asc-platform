@@ -10,6 +10,23 @@ const toKey = (base64: string) => {
   return Uint8Array.from(raw, (c) => c.charCodeAt(0));
 };
 
+/** Resolves once this registration has an active worker (pushManager.subscribe needs one). */
+function whenActive(reg: ServiceWorkerRegistration): Promise<ServiceWorkerRegistration> {
+  if (reg.active) return Promise.resolve(reg);
+  const worker = reg.installing ?? reg.waiting;
+  return new Promise((resolve) => {
+    if (!worker) return resolve(reg);
+    worker.addEventListener("statechange", () => {
+      if (worker.state === "activated") resolve(reg);
+    });
+  });
+}
+
+/** Stops a step from hanging forever, so the button never sticks on "One moment". */
+function withTimeout<T>(p: Promise<T>, ms: number, what: string): Promise<T> {
+  return Promise.race([p, new Promise<T>((_, reject) => setTimeout(() => reject(new Error(`${what} timed out`)), ms))]);
+}
+
 const isIos = () => /iphone|ipad|ipod/i.test(navigator.userAgent);
 const isInstalled = () => window.matchMedia("(display-mode: standalone)").matches || (navigator as Navigator & { standalone?: boolean }).standalone === true;
 
@@ -20,7 +37,7 @@ const isInstalled = () => window.matchMedia("(display-mode: standalone)").matche
 export function NotificationsToggle({ token, publicKey, compact = false }: { token: string; publicKey: string; compact?: boolean }) {
   const [state, setState] = useState<State>("loading");
   const [note, setNote] = useState("");
-  const scope = `/m/${token}/`;
+  const scope = `/m/${token}`;
 
   useEffect(() => {
     (async () => {
@@ -42,16 +59,20 @@ export function NotificationsToggle({ token, publicKey, compact = false }: { tok
     try {
       const permission = await Notification.requestPermission();
       if (permission !== "granted") return setState(permission === "denied" ? "blocked" : "off");
-      const reg = await navigator.serviceWorker.register("/sw.js", { scope });
-      await navigator.serviceWorker.ready;
-      const sub = (await reg.pushManager.getSubscription()) ?? (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: toKey(publicKey) }));
+      // Wait on this registration itself, not navigator.serviceWorker.ready, which never resolves
+      // when the open page sits outside the worker's scope.
+      const reg = await withTimeout(navigator.serviceWorker.register("/sw.js", { scope }).then(whenActive), 15000, "Service worker");
+      const sub =
+        (await reg.pushManager.getSubscription()) ??
+        (await withTimeout(reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: toKey(publicKey) }), 20000, "Subscribe"));
       const res = await fetch("/api/push/subscribe", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token, subscription: sub.toJSON() }) });
       if (!res.ok) throw new Error("save failed");
       setState("on");
       await fetch("/api/push/test", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token }) });
-    } catch {
+    } catch (err) {
+      console.error("Turn on notifications failed", err);
       setState("off");
-      setNote("Couldn't turn notifications on. Try again, or ask ASC.");
+      setNote("Couldn't turn notifications on. Close the app, open it again from the home screen icon and tap Turn on. If it still fails, ask ASC.");
     }
   }
 
