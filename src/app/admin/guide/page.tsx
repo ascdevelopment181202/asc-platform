@@ -236,7 +236,7 @@ export default async function Guide() {
       <Section id="auto" title="What runs automatically">
         <ul>
           <li>Missed call: text back within seconds (open-hours or closed version), notification to the client, conversation in their inbox.</li>
-          <li>Review requests: first text 5 minutes after Job done (15 minutes after a booking ends on its own), reminders 10 and 20 days later, and one gentle ask after 3 months. Only 9am to 7pm. Stops when they open the link, rate, leave a Google review, reply STOP, or the owner stops it. Each client&apos;s timings are editable under Review autopilot; the owner sees them in the app under Reviews, How review requests work.</li>
+          <li>Review requests: first text within 5 minutes of Job done or a booking ending, reminders 10 and 20 days later, and one gentle ask after 3 months. Only 9am to 7pm. Stops when they open the link, rate, leave a Google review, reply STOP, or the owner stops it. Each client&apos;s timings are editable under Review autopilot; the owner sees them in the app under Reviews, How review requests work.</li>
           <li>Triggers: a booking ending, Mark as paid, moving a customer to Job done (each switchable), plus Job done / Ask buttons, texting DONE, Today&apos;s customers and the job-software link.</li>
           <li>6pm on work days: one notification listing today&apos;s customers, one tap each to ask. Fridays even if it was quiet.</li>
           <li>Email instead of text when the customer has an email and we can&apos;t text (US before registration, or a failed text).</li>

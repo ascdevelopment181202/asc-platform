@@ -236,8 +236,8 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
                   <p className="font-medium">Schedule</p>
                   <p className="text-xs text-neutral-500">{scheduleSummary(c)} Only sent 9am to 7pm. Stops when they open the link, rate, leave a Google review, reply STOP, or the owner stops it.</p>
                   <div className="mt-2 grid grid-cols-2 gap-2">
-                    <label className="block"><span className="text-xs text-neutral-600">First text, minutes after Job done</span><input name="firstDelayMin" type="number" min="1" max="1440" defaultValue={reviewSettings(c).firstDelayMin} className={input} /></label>
-                    <label className="block"><span className="text-xs text-neutral-600">After a booking ends on its own, minutes</span><input name="bookingDelayMin" type="number" min="5" max="1440" defaultValue={reviewSettings(c).bookingDelayMin} className={input} /></label>
+                    <label className="block"><span className="text-xs text-neutral-600">First text, minutes after Job done</span><input name="firstDelayMin" type="number" min="1" max="5" defaultValue={reviewSettings(c).firstDelayMin} className={input} /></label>
+                    <label className="block"><span className="text-xs text-neutral-600">After a booking ends on its own, minutes</span><input name="bookingDelayMin" type="number" min="1" max="5" defaultValue={reviewSettings(c).bookingDelayMin} className={input} /></label>
                     <label className="block"><span className="text-xs text-neutral-600">Reminders, days after (comma separated)</span><input name="reminderDays" defaultValue={reviewSettings(c).reminderDays.join(", ")} className={input} /></label>
                     <label className="block"><span className="text-xs text-neutral-600">Final gentle ask, days after (0 = off)</span><input name="laterDays" type="number" min="0" max="364" defaultValue={reviewSettings(c).laterDays} className={input} /></label>
                   </div>
