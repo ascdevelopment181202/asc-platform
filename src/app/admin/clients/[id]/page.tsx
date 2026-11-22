@@ -58,6 +58,8 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
   type SmsRow = { id: string; created_at: string; to_number: string; kind: string; status: string; error: string | null };
   const { data: smsLog } = await supabase.from("sms_log").select("id, created_at, to_number, kind, status, error").eq("client_id", id).order("created_at", { ascending: false }).limit(8).returns<SmsRow[]>();
   const a2p = c.country === "US" && c.messaging_service_sid ? await a2pStatus(c.messaging_service_sid) : null;
+  // How many phones have notifications on, so you can confirm on the setup call.
+  const { count: pushPhones } = await db().from("push_subscriptions").select("id", { count: "exact", head: true }).eq("client_id", c.id);
   const previewUrl = site ? `${env.appUrl}/s/${site.slug}` : null;
   const seoTotal = site ? allPaths(site.content).length - 1 : 0;
   const { count: seoWritten } = site
@@ -323,6 +325,9 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
               <p>
                 Status: <strong className={c.sms_enabled ? "text-green-700" : "text-neutral-500"}>{c.sms_enabled ? "Texts on" : "Texts off"}</strong>
                 {c.last_forwarded_call_at && <span className="text-neutral-500"> · last forwarded call {fmt(c.last_forwarded_call_at)}</span>}
+              </p>
+              <p className={pushPhones ? "text-green-700" : "text-amber-700"}>
+                Notifications: {pushPhones ? `on for ${pushPhones} phone${pushPhones === 1 ? "" : "s"}` : "not turned on yet (they tap Turn on in the app, then Allow)"}
               </p>
               <p className="break-all text-xs text-neutral-600">
                 Client app: <a className="underline" href={`${env.appUrl}/m/${c.dashboard_token}`}>{`${env.appUrl}/m/${c.dashboard_token}`}</a>
