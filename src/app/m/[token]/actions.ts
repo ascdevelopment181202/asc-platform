@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { db, type Client } from "@/lib/supabase";
 import { isTextable, normalizePhone } from "@/lib/phone";
-import { BULK_PER_DAY, countryOf, createJob, parseCustomerList, sendSms, upsertContact, type Contact } from "@/lib/sms";
+import { BULK_PER_DAY, countryOf, createJob, parseCustomerList, sendSms, upsertContact, type Contact, firstSendLabel } from "@/lib/sms";
 
 // These run from the client's private app link. The token is the only key, same as /r/[token].
 
@@ -86,7 +86,7 @@ export async function jobDone(formData: FormData) {
     email: String(formData.get("email") ?? "").trim() || null,
   });
   if (!result.ok) back(page, "err", result.error);
-  else back(page, "ok", `Done. ${result.contact.name ?? "Your customer"} will get a review request in about 2 hours.`);
+  else back(page, "ok", `Done. ${result.contact.name ?? "Your customer"} will get a review request ${firstSendLabel(c)}.`);
 }
 
 /** One review text per past customer, spread over a few days so it doesn't land as a burst. */

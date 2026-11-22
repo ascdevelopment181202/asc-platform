@@ -53,7 +53,53 @@ const HOUR = 3600_000;
 const DAY = 24 * HOUR;
 
 /** Review texts after a job: first ask, then two gentle reminders. Bulk uploads get the first ask only. */
-export const REVIEW_STEPS_MS = [2 * HOUR, 4 * DAY, 14 * DAY];
+/** How a client's review requests are timed. Admin can change any of it per client. */
+export type ReviewSettings = {
+  firstDelayMin: number; // first text, minutes after Job done / Mark as paid / Ask
+  bookingDelayMin: number; // first text after a booking ends on its own (gives the owner time to stop it)
+  reminderDays: number[]; // reminders, days after the first text
+  laterDays: number; // one last, gentle ask this many days after the first text (0 = off)
+  onPaid: boolean; // Mark as paid asks by default
+  onStage: boolean; // moving a customer to Job done asks
+};
+export const DEFAULT_REVIEW_SETTINGS: ReviewSettings = { firstDelayMin: 5, bookingDelayMin: 15, reminderDays: [10, 20], laterDays: 90, onPaid: true, onStage: true };
+
+export function reviewSettings(c: Pick<Client, "review_settings">): ReviewSettings {
+  const r = { ...DEFAULT_REVIEW_SETTINGS, ...(c.review_settings ?? {}) };
+  const days = (Array.isArray(r.reminderDays) ? r.reminderDays : DEFAULT_REVIEW_SETTINGS.reminderDays).map(Number).filter((d) => d > 0 && d < 365).sort((a, b) => a - b).slice(0, 4);
+  return {
+    firstDelayMin: Math.min(Math.max(Number(r.firstDelayMin) || 0, 1), 24 * 60),
+    bookingDelayMin: Math.min(Math.max(Number(r.bookingDelayMin) || 0, 5), 24 * 60),
+    reminderDays: days,
+    laterDays: Math.max(Number(r.laterDays) || 0, 0),
+    onPaid: r.onPaid !== false,
+    onStage: r.onStage !== false,
+  };
+}
+
+/** Offsets (from the first text) of every text in the sequence: [0, 10 days, 20 days, 90 days]. */
+export function reviewOffsets(s: ReviewSettings): number[] {
+  const out = [0, ...s.reminderDays.map((d) => d * DAY)];
+  if (s.laterDays > 0 && s.laterDays * DAY > out.at(-1)!) out.push(s.laterDays * DAY);
+  return out;
+}
+
+/** "in about 5 minutes" / "in about an hour" for confirmation messages. */
+export function firstSendLabel(c: Pick<Client, "review_settings">, booking = false) {
+  const m = booking ? reviewSettings(c).bookingDelayMin : reviewSettings(c).firstDelayMin;
+  if (m < 60) return `in about ${m} minute${m === 1 ? "" : "s"}`;
+  const h = Math.round(m / 60);
+  return `in about ${h === 1 ? "an hour" : `${h} hours`}`;
+}
+
+/** Plain-English schedule, for the app and admin: "5 minutes after the trigger, then 10 and 20 days later, and once more after 3 months". */
+export function scheduleSummary(c: Pick<Client, "review_settings">) {
+  const s = reviewSettings(c);
+  const first = s.firstDelayMin < 60 ? `${s.firstDelayMin} minutes` : `${Math.round(s.firstDelayMin / 60)} hour${Math.round(s.firstDelayMin / 60) === 1 ? "" : "s"}`;
+  const rem = s.reminderDays.length ? `, then reminders ${s.reminderDays.length === 1 ? `${s.reminderDays[0]} days` : `${s.reminderDays.slice(0, -1).join(", ")} and ${s.reminderDays.at(-1)} days`} later` : "";
+  const later = s.laterDays > 0 ? `, and once more after ${s.laterDays % 30 === 0 ? `${s.laterDays / 30} month${s.laterDays === 30 ? "" : "s"}` : `${s.laterDays} days`}` : "";
+  return `First text ${first} after the job is marked done${rem}${later}.`;
+}
 /** Don't ask the same customer for another review within this window. */
 export const REVIEW_COOLDOWN_MS = 180 * DAY;
 /** A caller who rings again within this window doesn't get a second text. */
@@ -67,6 +113,8 @@ export const DEFAULT_TEMPLATES = {
   review: "Hi {name}, it's {sender}. {thanks} If you're happy with how it went, would you mind leaving us a quick Google review? It really helps a small business like ours: {link}",
   review_followup: "Hi {name}, it's {sender} again. If you get a minute, a quick Google review would mean a lot to us: {link} Reply STOP to opt out",
   review_reask: "Hi {name}, it's {sender}. Thanks for giving us the chance to put things right. If you're happy now, a quick Google review would mean a lot: {link}",
+  review_last: "Hi {name}, last nudge from {sender}, promise! If you were happy with {jobthe}, a quick Google review really helps a small business like ours: {link} Reply STOP to opt out",
+  review_later: "Hi {name}, it's {sender}. Hope everything's still good since we did {jobthe}. If you ever have a minute, a quick Google review would really help us: {link} Reply STOP to opt out",
 };
 
 /** After-hours text for clients who do emergency call-outs (set from the onboarding form). */
@@ -82,6 +130,8 @@ const US_TEMPLATES = {
   review: `${DEFAULT_TEMPLATES.review} Reply STOP to opt out`,
   review_followup: DEFAULT_TEMPLATES.review_followup,
   review_reask: `${DEFAULT_TEMPLATES.review_reask} Reply STOP to opt out`,
+  review_last: DEFAULT_TEMPLATES.review_last,
+  review_later: DEFAULT_TEMPLATES.review_later,
 };
 
 export const countryOf = (c: Pick<Client, "country">): Country => (c.country === "US" ? "US" : "GB");
@@ -162,16 +212,35 @@ export function jobLabel(raw: string | null | undefined, customerName?: string |
     .join(" ");
 }
 
+/** Which wording a step uses: the first ask, a reminder, the last reminder, or the gentle ask months later. */
+export function stepKind(c: Pick<Client, "review_settings">, step: number): "first" | "reminder" | "last" | "later" {
+  if (step === 1) return "first";
+  const s = reviewSettings(c);
+  const reminders = s.reminderDays.length;
+  if (step - 1 > reminders) return "later";
+  return step - 1 === reminders && reminders > 1 ? "last" : "reminder";
+}
+
 export function reviewText(c: Client, contact: Pick<Contact, "name">, job: Pick<Job, "review_token" | "job_label" | "source">, step: number) {
   const t = templatesFor(c);
+  const kind = stepKind(c, step);
   const template =
-    step === 1 ? (job.source === "reask" ? t.review_reask : c.review_template || t.review) : c.review_followup_template || t.review_followup;
+    kind === "first"
+      ? job.source === "reask"
+        ? t.review_reask
+        : c.review_template || t.review
+      : kind === "later"
+        ? t.review_later
+        : kind === "last" && !c.review_followup_template
+          ? t.review_last
+          : c.review_followup_template || t.review_followup;
   const label = job.job_label?.trim();
   return fill(template, {
     business: businessName(c),
     sender: senderLine(c),
     name: firstName(contact.name),
     job: label || "the job",
+    jobthe: label ? `the ${label}` : "the job",
     thanks: label ? `Thanks for choosing us for the ${label}.` : "Thanks for choosing us.",
     link: reviewLink(job),
   });
@@ -248,7 +317,7 @@ export type CreateJobResult = { ok: true; job: Job; contact: Contact; firstSendA
 
 /**
  * One finished job = one set of review texts. Used by the dashboard button, the owner's DONE text and bulk uploads.
- * Bulk jobs get a single text at `startAt`; everything else gets the full sequence starting 2 hours from now.
+ * Bulk jobs get a single text at `startAt`; everything else gets the client's full sequence (see reviewSettings).
  */
 export async function createJob(
   c: Client,
@@ -291,8 +360,10 @@ export async function createJob(
     .single<Job>();
   if (error) throw error;
 
-  const start = input.startAt ?? new Date(Date.now() + REVIEW_STEPS_MS[0]);
-  const steps = input.source === "bulk" || input.source === "reask" ? [0] : REVIEW_STEPS_MS.map((ms) => ms - REVIEW_STEPS_MS[0]);
+  const settings = reviewSettings(c);
+  const delayMin = input.source === "booking" ? settings.bookingDelayMin : settings.firstDelayMin;
+  const start = input.startAt ?? new Date(Date.now() + delayMin * 60_000);
+  const steps = input.source === "bulk" || input.source === "reask" ? [0] : reviewOffsets(settings);
   const { error: stepError } = await db()
     .from("review_messages")
     .insert(steps.map((offset, i) => ({ job_id: job.id, client_id: c.id, step: i + 1, send_at: new Date(start.getTime() + offset).toISOString() })));

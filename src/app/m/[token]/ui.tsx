@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-type Tab = "inbox" | "contacts" | "calendar" | "jobs" | "more";
+type Tab = "inbox" | "contacts" | "calendar" | "jobs" | "reviews" | "more";
 
 /** Page frame with the bottom tab bar, like the LeadConnector app. */
 export function AppShell({ token, active, unread, title, action, children }: { token: string; active: Tab; unread: number; title: string; action?: React.ReactNode; children: React.ReactNode }) {
@@ -16,9 +16,16 @@ export function AppShell({ token, active, unread, title, action, children }: { t
       <nav className="fixed inset-x-0 bottom-0 z-20 border-t border-neutral-200 bg-white" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
         <div className="mx-auto grid max-w-xl grid-cols-5">
           <NavItem href={`/m/${token}`} label="Inbox" on={active === "inbox"} badge={unread} icon={<path d="M3 13h4l2 3h6l2-3h4M5 5h14l2 8v5a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-5z" />} />
-          <NavItem href={`/m/${token}/contacts`} label="Contacts" on={active === "contacts"} icon={<path d="M16 19v-1a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v1M9 10a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM22 19v-1a4 4 0 0 0-3-3.9M16 3.1a3.5 3.5 0 0 1 0 6.8" />} />
           <NavItem href={`/m/${token}/calendar`} label="Calendar" on={active === "calendar"} icon={<path d="M4 6h16v14H4zM4 10h16M8 3v4M16 3v4" />} />
-          <NavItem href={`/m/${token}/jobs`} label="Jobs" on={active === "jobs"} icon={<path d="M3 7h18v13H3zM8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M3 13h18" />} />
+          <Link href={`/m/${token}/reviews`} aria-label="Reviews" className="relative -mt-5 flex flex-col items-center gap-0.5 pb-2 text-[11px] font-semibold">
+            <span className={`flex size-14 items-center justify-center rounded-full text-white shadow-lg ring-4 ring-white ${active === "reviews" ? "bg-[#1f62b3]" : "bg-[#2a78d6]"}`}>
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                <path d="M12 2.8l2.8 5.7 6.3.9-4.55 4.43 1.07 6.27L12 17.1l-5.62 2.96 1.07-6.27L2.9 9.4l6.3-.9z" />
+              </svg>
+            </span>
+            <span className={active === "reviews" ? "text-[#2a78d6]" : "text-neutral-700"}>Reviews</span>
+          </Link>
+          <NavItem href={`/m/${token}/contacts`} label="Contacts" on={active === "contacts" || active === "jobs"} icon={<path d="M16 19v-1a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v1M9 10a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM22 19v-1a4 4 0 0 0-3-3.9M16 3.1a3.5 3.5 0 0 1 0 6.8" />} />
           <NavItem href={`/m/${token}/more`} label="More" on={active === "more"} icon={<path d="M5 12h.01M12 12h.01M19 12h.01" />} />
         </div>
       </nav>

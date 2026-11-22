@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { displayPhone } from "@/lib/phone";
 import { todaysCustomers } from "@/lib/today";
+import { firstSendLabel } from "@/lib/sms";
 import { loadClient, unreadTotal } from "../data";
 import { AppShell, Avatar, Flash } from "../ui";
 import { askFromToday } from "../crm-actions";
@@ -20,11 +21,11 @@ export default async function Today({ params, searchParams }: { params: Promise<
   const toAsk = rows.filter((r) => !r.asked);
 
   return (
-    <AppShell token={token} active="more" unread={unread} title="Today's customers">
+    <AppShell token={token} active="reviews" unread={unread} title="Today's customers">
       <Flash ok={sp.ok} err={sp.err} />
       <div className="space-y-4 p-4">
         <p className="text-sm text-neutral-600">
-          {toAsk.length ? "Tap Ask for anyone whose job is finished. We'll text them in about 2 hours." : rows.length ? "Everyone from today has been asked. Nice work." : "Nobody in the app today yet. Add anyone below."}
+          {toAsk.length ? `Tap Ask for anyone whose job is finished. We'll text them ${firstSendLabel(c)}.` : rows.length ? "Everyone from today has been asked. Nice work." : "Nobody in the app today yet. Add anyone below."}
         </p>
         {rows.length > 0 && (
           <ul className="divide-y divide-neutral-100 overflow-hidden rounded-2xl bg-white shadow-sm">

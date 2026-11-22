@@ -28,7 +28,7 @@ export async function cancelBookingReview(appointmentId: string) {
 }
 
 /**
- * Bookings that have just ended: queue the review request for 2 hours later and tell the owner,
+ * Bookings that have just ended: queue the review request (bookingDelayMin after the end) and tell the owner,
  * so they only have to act if the job isn't actually finished.
  */
 export async function queueEndedBookings(getClient: (id: string) => Promise<Client | null>, now = new Date()) {

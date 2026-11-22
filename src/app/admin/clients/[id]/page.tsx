@@ -16,7 +16,7 @@ import type { Site } from "@/lib/sites";
 import { env } from "@/lib/env";
 import { btn, btnQuiet, Countdown, fmt, input, StatusPill } from "../../ui";
 import { resendPhoneWelcome, saveSmsSettings, sendTestText, setUpPhone } from "../../sms-actions";
-import { countryOf, EMERGENCY_AFTER_HOURS, TEMPLATE_HELP, templatesFor } from "@/lib/sms";
+import { countryOf, EMERGENCY_AFTER_HOURS, firstSendLabel, reviewSettings, scheduleSummary, TEMPLATE_HELP, templatesFor } from "@/lib/sms";
 import { displayUk, forwardingCodes } from "@/lib/phone";
 import { a2pStatus } from "@/lib/twilio";
 import { saveAutopilot, saveBranding, saveCompetitor, saveReviewLocation } from "../../brand-actions";
@@ -229,9 +229,21 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
             <div className="space-y-4 text-sm">
               <form action={saveAutopilot} className="space-y-2">
                 <input type="hidden" name="clientId" value={c.id} />
-                <label className="flex items-start gap-2"><input type="checkbox" name="auto_review_after_booking" defaultChecked={c.auto_review_after_booking} className="mt-0.5" /><span><strong>Ask automatically when a booking ends.</strong> Queued for 2 hours later, and the owner gets a notification to stop it if the job isn&apos;t done.</span></label>
+                <label className="flex items-start gap-2"><input type="checkbox" name="auto_review_after_booking" defaultChecked={c.auto_review_after_booking} className="mt-0.5" /><span><strong>Ask automatically when a booking ends.</strong> The first text goes {firstSendLabel(c, true)} after it ends, and the owner gets a notification to stop it if the job isn&apos;t done.</span></label>
                 <label className="flex items-start gap-2"><input type="checkbox" name="review_auto_reply" defaultChecked={c.review_auto_reply} className="mt-0.5" /><span><strong>Reply to 4 to 5 star Google reviews automatically</strong> after a day, unless the owner writes their own. Low ratings always wait for the owner.</span></label>
                 <label className="flex items-start gap-2"><input type="checkbox" name="referral_ask" defaultChecked={c.referral_ask} className="mt-0.5" /><span><strong>Ask for referrals after 5 stars.</strong> One thank-you text a few hours later.</span></label>
+                <div className="rounded border border-neutral-200 p-2">
+                  <p className="font-medium">Schedule</p>
+                  <p className="text-xs text-neutral-500">{scheduleSummary(c)} Only sent 9am to 7pm. Stops when they open the link, rate, leave a Google review, reply STOP, or the owner stops it.</p>
+                  <div className="mt-2 grid grid-cols-2 gap-2">
+                    <label className="block"><span className="text-xs text-neutral-600">First text, minutes after Job done</span><input name="firstDelayMin" type="number" min="1" max="1440" defaultValue={reviewSettings(c).firstDelayMin} className={input} /></label>
+                    <label className="block"><span className="text-xs text-neutral-600">After a booking ends on its own, minutes</span><input name="bookingDelayMin" type="number" min="5" max="1440" defaultValue={reviewSettings(c).bookingDelayMin} className={input} /></label>
+                    <label className="block"><span className="text-xs text-neutral-600">Reminders, days after (comma separated)</span><input name="reminderDays" defaultValue={reviewSettings(c).reminderDays.join(", ")} className={input} /></label>
+                    <label className="block"><span className="text-xs text-neutral-600">Final gentle ask, days after (0 = off)</span><input name="laterDays" type="number" min="0" max="364" defaultValue={reviewSettings(c).laterDays} className={input} /></label>
+                  </div>
+                  <label className="mt-2 flex items-center gap-2"><input type="checkbox" name="onPaid" defaultChecked={reviewSettings(c).onPaid} /> Mark as paid asks for a review</label>
+                  <label className="flex items-center gap-2"><input type="checkbox" name="onStage" defaultChecked={reviewSettings(c).onStage} /> Moving a customer to Job done asks for a review</label>
+                </div>
                 <label className="block">
                   <span className="text-neutral-600">Name in texts (&ldquo;it&apos;s <em>Paul</em> from {clientLabel(c)}&rdquo;)</span>
                   <input name="sender_name" defaultValue={c.sender_name ?? ""} placeholder={c.first_name ?? "First name"} className={input} />
