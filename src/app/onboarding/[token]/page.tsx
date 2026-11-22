@@ -33,7 +33,7 @@ export default async function OnboardingPage({ params }: { params: Promise<{ tok
               token={token}
               supabaseUrl={env.supabaseUrl}
               supabaseAnonKey={process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? ""}
-              managerEmail={env.adminEmail}
+              managerEmail={env.googleManagerEmail}
               defaults={{
                 businessName: client.business_name ?? "",
                 contactName: client.full_name ?? "",

@@ -185,6 +185,46 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
             </form>
           </Card>
 
+          {c.country === "US" && (() => {
+            const a = (sub?.data ?? {}) as Record<string, string>;
+            const legal = `${env.appUrl}/legal/${c.review_slug}`;
+            const t = templatesFor(c);
+            const fill = (x: string) => x.replace("{business}", clientLabel(c)).replace("{name}", "Sarah").replace("{link}", `${env.appUrl}/v/abc123def456`);
+            const rows: [string, string][] = [
+              ["Brand type", a.ein ? "Low-Volume Standard (they have an EIN)" : "Sole Proprietor (no EIN). Twilio texts a code to their own cell, they reply to confirm."],
+              ["Legal business name", a.legalName || clientLabel(c)],
+              ["EIN", a.ein || "None (Sole Proprietor)"],
+              ["Business address", a.address || c.invoice_details?.businessAddress || "Missing: ask on the call"],
+              ["Contact cell (for the code)", c.owner_mobile ?? "Missing"],
+              ["Email", c.email],
+              ["Website", c.live_url ?? c.invoice_details?.website ?? "Use their review page link below"],
+              ["Campaign use case", "Customer Care"],
+              ["Campaign description", `${clientLabel(c)} texts back customers whose calls were missed, replies to customer messages about quotes and jobs, and asks customers for a review after a completed job. No marketing.`],
+              ["Sample message 1", fill(t.missed_call)],
+              ["Sample message 2", fill(t.review)],
+              ["How customers opt in", `Customers call or text ${clientLabel(c)}'s business number. If the call is missed, the customer receives one text reply. Customers who have a completed job receive a review request. Terms are published at ${legal}/terms.`],
+              ["Privacy policy URL", `${legal}/privacy`],
+              ["Terms URL", `${legal}/terms`],
+              ["Opt-out / help keywords", "STOP, HELP (handled automatically by Twilio)"],
+              ["Messaging Service to link", c.messaging_service_sid ?? "Click Set up phone first"],
+            ];
+            return (
+              <Card title={`US texting registration (A2P 10DLC): ${a2p ?? (c.messaging_service_sid ? "not started" : "set up phone first")}`}>
+                <p className="mb-2 text-xs text-neutral-600">
+                  In Twilio go to <a className="underline" href="https://console.twilio.com/" target="_blank" rel="noreferrer">Messaging, Regulatory Compliance, A2P 10DLC</a>. Register the brand, then the campaign, then link the campaign to the Messaging Service. Copy each value below.
+                </p>
+                <dl className="divide-y divide-neutral-100 text-xs">
+                  {rows.map(([k, v]) => (
+                    <div key={k} className="grid grid-cols-3 gap-2 py-1.5">
+                      <dt className="font-medium text-neutral-600">{k}</dt>
+                      <dd className="col-span-2 select-all break-words">{v}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </Card>
+            );
+          })()}
+
           <Card title="Reviews and invoices">
             <div className="space-y-4 text-sm">
               <div>

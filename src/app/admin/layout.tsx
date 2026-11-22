@@ -10,7 +10,14 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           <Link href="/admin" className="font-semibold">
             ASC Platform
           </Link>
-          <span className="text-sm text-neutral-500">Onboarding</span>
+          <nav className="flex items-center gap-2">
+            <Link href="/admin" className="rounded-lg px-3 py-2 text-sm text-neutral-600 hover:bg-neutral-100">
+              Clients
+            </Link>
+            <Link href="/admin/guide" className="flex items-center gap-1.5 rounded-lg bg-neutral-900 px-3 py-2 text-sm font-medium text-white hover:bg-neutral-700">
+              <span aria-hidden>🧭</span> Guide
+            </Link>
+          </nav>
         </div>
       </header>
       <main className="mx-auto max-w-6xl px-6 py-8">{children}</main>

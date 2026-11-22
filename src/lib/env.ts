@@ -23,6 +23,10 @@ export const env = {
   get emailFrom() {
     return required("EMAIL_FROM");
   },
+  /** The Google account clients add as a Business Profile manager (onboarding form). */
+  get googleManagerEmail() {
+    return (process.env.GOOGLE_MANAGER_EMAIL || "chavanayush802@gmail.com").trim();
+  },
   get adminEmail() {
     return required("ADMIN_EMAIL");
   },
