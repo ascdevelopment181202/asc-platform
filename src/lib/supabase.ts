@@ -63,6 +63,12 @@ export type Client = {
   brand_color: string | null; // "#F2B705": buttons and accents on quotes, invoices and the review page
   logo_url: string | null; // public URL (PNG or JPG so it can go on PDFs)
   review_slug: string; // shareable review page: /review/<review_slug>
+  gbp_location: string | null; // Google Business Profile for reviews: "locations/123"
+  gbp_reviews_path: string | null; // resolved "accounts/9/locations/123"
+  gbp_title: string | null;
+  reviews_synced_at: string | null;
+  google_rating: number | null;
+  google_review_count: number | null;
 };
 
 /** What goes on a client's quotes and invoices, and how their customers pay. */

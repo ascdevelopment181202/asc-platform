@@ -18,7 +18,9 @@ export default async function More({ params }: { params: Promise<{ token: string
   const [unread, publicKey] = await Promise.all([unreadTotal(c.id), vapidPublicKey()]);
   const items: { href: string; icon: string; title: string; sub: string }[] = [
     { href: `/m/${token}/docs`, icon: c.country === "US" ? "💵" : "💷", title: "Quotes and invoices", sub: "Create, send by text, see what's owed" },
-    { href: `/m/${token}/reviews`, icon: "⭐", title: "Reviews", sub: "Job done button, review requests, past customers" },
+    { href: `/m/${token}/tasks`, icon: "✅", title: "Tasks and follow-ups", sub: "Call-backs and chasers, with reminders" },
+    { href: `/m/${token}/reviews`, icon: "⭐", title: "Reviews", sub: "Your Google reviews, replies, review requests" },
+    { href: `/m/${token}/contacts/import`, icon: "📥", title: "Import customers", sub: "From a spreadsheet, job software or your phone" },
     { href: `/m/${token}/stats`, icon: "📈", title: "Results", sub: "This month's missed calls, replies and reviews" },
     { href: `/m/${token}/more/templates`, icon: "⚡", title: "Saved replies", sub: "Quick messages you send often" },
     { href: `/m/${token}/more/booking`, icon: "📅", title: "Booking link and hours", sub: c.booking_enabled ? "On: customers can book themselves" : "Off" },

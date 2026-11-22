@@ -6,6 +6,8 @@ import { currencyFor, money, STAGES } from "@/lib/crm";
 import { fullWhen, loadClient, loadContact, shortWhen } from "../../data";
 import { Avatar, Card, field, Flash, primaryBtn, SubHeader } from "../../ui";
 import { addNote, changeStage, requestReview, updateContact } from "../../crm-actions";
+import { openTasks } from "@/lib/tasks";
+import { AddTaskForm, TaskList } from "../../tasks-ui";
 
 export const dynamic = "force-dynamic";
 
@@ -24,10 +26,11 @@ export default async function ContactPage({ params, searchParams }: Props) {
   const currency = currencyFor(c);
   const here = `/m/${token}/contacts/${contact.id}`;
 
-  const [{ data: notes }, { data: appts }, { data: docs }] = await Promise.all([
+  const [{ data: notes }, { data: appts }, { data: docs }, tasks] = await Promise.all([
     db().from("contact_notes").select("id, body, created_at").eq("contact_id", contact.id).order("created_at", { ascending: false }).limit(50).returns<{ id: string; body: string; created_at: string }[]>(),
     db().from("appointments").select("id, title, starts_at, status").eq("contact_id", contact.id).order("starts_at", { ascending: false }).limit(20).returns<{ id: string; title: string; starts_at: string; status: string }[]>(),
     db().from("documents").select("id, kind, number, total_pence, currency, status, created_at").eq("contact_id", contact.id).order("created_at", { ascending: false }).limit(20).returns<{ id: string; kind: string; number: number; total_pence: number; currency: string; status: string; created_at: string }[]>(),
+    openTasks(c.id, { contactId: contact.id, limit: 20 }),
   ]);
 
   const hidden = (
@@ -76,6 +79,15 @@ export default async function ContactPage({ params, searchParams }: Props) {
             ))}
           </div>
           {contact.job_value_pence != null && <p className="mt-2 text-sm text-neutral-600">Job value: {money(contact.job_value_pence, currency)}</p>}
+        </Card>
+
+        <Card title="Follow-ups">
+          {tasks.length > 0 && (
+            <div className="mb-3">
+              <TaskList token={token} tasks={tasks} tz={tz} country={c.country} back={here} showContact={false} />
+            </div>
+          )}
+          <AddTaskForm token={token} contactId={contact.id} back={here} />
         </Card>
 
         <Card title="Notes">

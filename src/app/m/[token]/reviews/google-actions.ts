@@ -1,0 +1,41 @@
+"use server";
+
+import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
+import { db } from "@/lib/supabase";
+import { replyToReview, syncReviews, type GoogleReview } from "@/lib/google-reviews";
+import { clientFromForm } from "../data";
+
+const str = (f: FormData, k: string) => String(f.get(k) ?? "").trim();
+
+export async function postReply(f: FormData) {
+  const c = await clientFromForm(f);
+  const page = `/m/${c.dashboard_token}/reviews/g/${str(f, "id")}`;
+  const text = str(f, "reply").slice(0, 4000);
+  if (!text) redirect(`${page}?err=${encodeURIComponent("Write a reply first.")}`);
+  const { data: rv } = await db().from("google_reviews").select("*").eq("client_id", c.id).eq("id", str(f, "id")).single<GoogleReview>();
+  if (!rv) redirect(`/m/${c.dashboard_token}/reviews`);
+  let err = "";
+  try {
+    await replyToReview(c, rv, text);
+  } catch (e) {
+    console.error("google reply failed", e);
+    err = "Google didn't accept the reply just now. Try again in a minute, or ask ASC.";
+  }
+  revalidatePath(`/m/${c.dashboard_token}/reviews`);
+  redirect(err ? `${page}?err=${encodeURIComponent(err)}` : `${page}?ok=${encodeURIComponent("Reply posted on Google.")}`);
+}
+
+export async function refreshReviews(f: FormData) {
+  const c = await clientFromForm(f);
+  const page = `/m/${c.dashboard_token}/reviews`;
+  let msg = "Up to date.";
+  try {
+    const { added } = await syncReviews(c);
+    if (added) msg = `${added} new review${added === 1 ? "" : "s"}.`;
+  } catch (e) {
+    console.error("review sync failed", e);
+    redirect(`${page}?err=${encodeURIComponent("Couldn't reach Google just now.")}`);
+  }
+  redirect(`${page}?ok=${encodeURIComponent(msg)}`);
+}
