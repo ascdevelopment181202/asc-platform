@@ -8,6 +8,8 @@ import { firstNameOf, formLink, startOnboarding } from "@/lib/onboarding";
 import { once } from "@/lib/clients";
 import { isTextable, normalizePhone } from "@/lib/phone";
 import { EMERGENCY_AFTER_HOURS } from "@/lib/sms";
+import { US_CARRIERS, US_TIMEZONES } from "@/lib/onboarding-fields";
+import type { Country } from "@/lib/phone";
 
 // Every route under /admin is behind the Basic auth in src/proxy.ts, including these actions.
 
@@ -54,7 +56,12 @@ export async function addClientQuietly(formData: FormData) {
   const email = val("email");
   if (!email) return;
   const fullName = val("fullName") || null;
-  const mobile = normalizePhone(val("mobile"), "GB");
+  // A +1 number means a US client even if the country was left on UK.
+  const rawMobile = val("mobile").replace(/[^\d+]/g, "");
+  const country: Country = val("country") === "US" || rawMobile.startsWith("+1") ? "US" : "GB";
+  const mobile = normalizePhone(val("mobile"), country);
+  const tzKey = val("usTimezone") as keyof typeof US_TIMEZONES;
+  const carrier = (US_CARRIERS as readonly string[]).includes(val("carrier")) ? val("carrier") : null;
   const liveUrl = val("liveUrl");
   const reviewUrl = val("reviewUrl");
   const now = new Date().toISOString();
@@ -66,15 +73,16 @@ export async function addClientQuietly(formData: FormData) {
       first_name: fullName?.split(" ")[0] ?? null,
       business_name: val("businessName") || null,
       phone: mobile ?? (val("mobile") || null),
-      country: "GB",
-      timezone: "Europe/London",
-      owner_mobile: mobile && isTextable(mobile, "GB") ? mobile : null,
+      country,
+      timezone: country === "US" ? (US_TIMEZONES[tzKey] ?? "America/New_York") : "Europe/London",
+      mobile_carrier: country === "US" ? carrier : null,
+      owner_mobile: mobile && isTextable(mobile, country) ? mobile : null,
       google_review_url: /^https:\/\//.test(reviewUrl) ? reviewUrl : null,
       // Marked as already onboarded so the form reminders and 48-hour build alerts never fire.
       form_submitted_at: now,
       status: /^https?:\/\//.test(liveUrl) ? "live" : "building",
       live_url: /^https?:\/\//.test(liveUrl) ? liveUrl : null,
-      missed_call_after_hours_template: formData.get("emergency") === "on" ? EMERGENCY_AFTER_HOURS.GB : null,
+      missed_call_after_hours_template: formData.get("emergency") === "on" ? EMERGENCY_AFTER_HOURS[country] : null,
     })
     .select("id")
     .single<{ id: string }>();
