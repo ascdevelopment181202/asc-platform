@@ -3,7 +3,9 @@ import { db, type Client } from "@/lib/supabase";
 import { clientLabel, once } from "@/lib/clients";
 import { notifyAdmin } from "@/lib/email";
 import { inSendingWindow, reviewText, sendSms, type Contact, type Job } from "@/lib/sms";
-import { whenLabel, type Appointment } from "@/lib/crm";
+import { whenLabel, zonedParts, type Appointment } from "@/lib/crm";
+import { notifyClient } from "@/lib/push";
+import { displayPhone } from "@/lib/phone";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -127,6 +129,39 @@ export async function GET(request: Request) {
         `${env.appUrl}/admin/clients/${c.id}`,
       ]),
     ).catch((err) => skipped.push(`forwarding check ${clientLabel(c)}: ${err instanceof Error ? err.message : err}`));
+  }
+
+  // Evening nudge at 6pm their time: "finished any jobs?", so review requests actually get sent.
+  for (const c of active ?? []) {
+    const tz = c.timezone || "Europe/London";
+    const local = zonedParts(now, tz);
+    if (local.hm < "18:00" || local.hm >= "18:10") continue;
+    const workDays = c.business_hours?.days?.length ? c.business_hours.days : [1, 2, 3, 4, 5];
+    if (!workDays.includes(local.weekday)) continue;
+    await once(c.id, `review_nudge_${local.ymd}`, async () => {
+      const { data: appts } = await db()
+        .from("appointments")
+        .select("id, starts_at, contact_id, title, contacts(name, phone)")
+        .eq("client_id", c.id)
+        .eq("status", "booked")
+        .gte("starts_at", new Date(now.getTime() - DAY).toISOString())
+        .lte("starts_at", now.toISOString())
+        .returns<(Pick<Appointment, "id" | "starts_at" | "contact_id" | "title"> & { contacts: { name: string | null; phone: string } | null })[]>();
+      const today = (appts ?? []).filter((a) => zonedParts(new Date(a.starts_at), tz).ymd === local.ymd);
+      const names = today.map((a) => a.contacts?.name ?? (a.contacts ? displayPhone(a.contacts.phone) : a.title)).slice(0, 3);
+      const isFriday = local.weekday === 5;
+      if (!today.length && !isFriday) return;
+      const app = `${env.appUrl}/m/${c.dashboard_token}`;
+      const msg = today.length
+        ? { title: "Finished today's jobs?", body: `Tap to mark ${names.join(", ")}${today.length > 3 ? " and others" : ""} as done and we'll ask for a Google review.`, url: `/m/${c.dashboard_token}/calendar` }
+        : { title: "Any jobs finished this week?", body: "Tap Job done for each one and we'll ask them for a Google review.", url: `/m/${c.dashboard_token}/reviews` };
+      const { count } = await db().from("push_subscriptions").select("id", { count: "exact", head: true }).eq("client_id", c.id);
+      if (count) await notifyClient(c.id, msg);
+      else if (c.owner_mobile && c.country !== "US") {
+        // No notifications on their phone: a text to the owner instead (US waits for texting registration).
+        await sendSms({ client: c, to: c.owner_mobile, kind: "owner_confirm", body: `${msg.title} ${msg.body.replace("Tap", "Open your app")} ${app}${msg.url.replace(`/m/${c.dashboard_token}`, "")}` });
+      }
+    }).catch((err) => skipped.push(`review nudge ${clientLabel(c)}: ${err instanceof Error ? err.message : err}`));
   }
 
   return Response.json({ ok: true, sent, skipped });

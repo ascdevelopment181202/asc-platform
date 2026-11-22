@@ -97,6 +97,9 @@ export default async function DocPage({ params, searchParams }: { params: Promis
           <form action={markPaid}>
             {hidden}
             <button className="w-full rounded-xl bg-green-600 px-4 py-3.5 text-base font-semibold text-white">Mark as paid</button>
+            <label className="mt-2 flex items-center gap-2 text-sm text-neutral-600">
+              <input type="checkbox" name="review" defaultChecked /> Also ask them for a Google review
+            </label>
           </form>
         )}
         {doc.kind === "quote" && doc.status !== "void" && doc.status !== "draft" && (

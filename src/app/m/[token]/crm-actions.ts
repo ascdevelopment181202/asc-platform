@@ -66,6 +66,11 @@ export async function changeStage(f: FormData) {
   if (!STAGES.some((s) => s.key === stage)) throw new Error("Unknown stage");
   await setStage(contact, stage, { manual: true });
   const to = safeBack(f, c.dashboard_token, `/m/${c.dashboard_token}/contacts/${contact.id}`);
+  // Moving someone to "Job done" asks them for a review (once per customer every 180 days).
+  if (stage === "done" && contact.stage !== "done") {
+    const result = await createJob(c, { phone: contact.phone, name: contact.name, source: "dashboard" });
+    if (result.ok) back(to, "ok", "Moved to Job done. Review request goes out in about 2 hours.");
+  }
   revalidatePath(to.split("?")[0]);
   redirect(to);
 }

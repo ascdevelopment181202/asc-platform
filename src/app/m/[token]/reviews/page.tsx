@@ -58,9 +58,12 @@ export default async function Reviews({ params, searchParams }: { params: Promis
             <input name="phone" type="tel" inputMode="tel" placeholder={c.country === "US" ? "Their cell number" : "Their mobile (07...)"} required autoComplete="off" className="w-full rounded-xl border border-neutral-300 px-4 py-3 text-base" />
             <button className="w-full rounded-xl bg-[#2a78d6] px-4 py-3.5 text-base font-semibold text-white active:bg-[#1f62b3]">Job done, ask for a review</button>
           </form>
+          <p className="mt-3 text-xs text-neutral-500">
+            It also happens automatically when you mark a booking as done, move a customer to Job done, or mark their invoice as paid. Each customer is asked once at most every 6 months. We&apos;ll remind you at 6pm on days you had bookings, and every Friday.
+          </p>
           {c.twilio_number && (
-            <p className="mt-3 text-xs text-neutral-500">
-              Or text <strong>DONE {c.country === "US" ? "2145550123" : "07700900123"} Sarah</strong> to {displayPhone(c.twilio_number)} from your phone.
+            <p className="mt-2 text-xs text-neutral-500">
+              Or from your own phone, text <strong>DONE {c.country === "US" ? "2145550123" : "07700900123"} Sarah</strong> (their number and first name) to {displayPhone(c.twilio_number)}.
             </p>
           )}
         </section>
