@@ -9,7 +9,10 @@ export type Country = "GB" | "US";
 /** Turns what people type into E.164 for the given country. Numbers already starting with + are kept as they are. */
 export function normalizePhone(raw: string | null | undefined, country: Country = "GB"): string | null {
   if (!raw) return null;
-  let s = raw.trim().replace(/\(0\)/g, "").replace(/[\s\-().]/g, "");
+  // Numbers copied from contacts, WhatsApp or iMessage often carry invisible direction marks
+  // (U+202A..U+202E, U+2066..U+2069, U+200E/F) and non-breaking spaces, so keep only digits and a leading +.
+  const cleaned = raw.replace(/\(0\)/g, "").replace(/[^\d+]/g, "");
+  let s = cleaned.startsWith("+") ? `+${cleaned.slice(1).replace(/\+/g, "")}` : cleaned.replace(/\+/g, "");
   if (s.startsWith("00")) s = `+${s.slice(2)}`;
   if (!s.startsWith("+")) {
     if (country === "US") {
