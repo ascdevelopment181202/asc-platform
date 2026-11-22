@@ -11,8 +11,9 @@ import { firstNameOf } from "@/lib/onboarding";
  * Buys the client's number (UK mobile, or US local plus Messaging Service), points it at the app,
  * switches texts on, and sends the owner their app link and forwarding codes by text and email.
  * Safe to run again: an existing number is kept and only the welcome is re-sent.
+ * With notify: false nothing goes to the client; send the welcome later from the admin page.
  */
-export async function setUpPhoneForClient(id: string) {
+export async function setUpPhoneForClient(id: string, opts: { notify?: boolean } = {}) {
   const { data: c } = await db().from("clients").select("*").eq("id", id).single<Client>();
   if (!c) throw new Error("Client not found");
   if (!c.owner_mobile) throw new Error("Add the owner's mobile first (it comes from the onboarding form)");
@@ -34,7 +35,7 @@ export async function setUpPhoneForClient(id: string) {
       .eq("id", id);
     if (error) throw new Error(`Bought ${number} but couldn't save it: ${error.message}. Add it manually.`);
   }
-  await sendPhoneWelcome({ ...c, twilio_number: number, messaging_service_sid: service, sms_enabled: true });
+  if (opts.notify !== false) await sendPhoneWelcome({ ...c, twilio_number: number, messaging_service_sid: service, sms_enabled: true });
   return number;
 }
 

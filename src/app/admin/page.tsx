@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { db, type Client, type Task } from "@/lib/supabase";
 import { clientLabel } from "@/lib/clients";
-import { addClientManually, addTask, completeTask } from "./actions";
+import { addClientManually, addClientQuietly, addTask, completeTask } from "./actions";
 import { btn, btnQuiet, Countdown, fmt, input, StatusPill } from "./ui";
 import { googleAccount } from "@/lib/google";
 import { googleEnabled } from "@/lib/env";
@@ -133,6 +133,22 @@ export default async function AdminHome({ searchParams }: { searchParams: Promis
           <input name="email" type="email" placeholder="Email" className={input} required />
           <input name="phone" placeholder="Phone" className={input} />
           <button className={btn}>Add and send welcome</button>
+        </form>
+      </section>
+
+      <section>
+        <h2 className="text-lg font-semibold">Add an existing client quietly</h2>
+        <p className="mt-1 text-sm text-neutral-500">
+          For clients you&apos;re setting up yourself. Nothing is sent to them: no welcome email, no form reminders. You set up their phone on their page and choose when they hear about it.
+        </p>
+        <form action={addClientQuietly} className="mt-3 grid gap-2 sm:grid-cols-3">
+          <input name="businessName" placeholder="Business name" className={input} required />
+          <input name="fullName" placeholder="Contact name" className={input} required />
+          <input name="email" type="email" placeholder="Email" className={input} required />
+          <input name="mobile" placeholder="Their mobile (07...)" className={input} required />
+          <input name="liveUrl" type="url" placeholder="Live website (optional)" className={input} />
+          <input name="reviewUrl" type="url" placeholder="Google review link (optional)" className={input} />
+          <button className={`${btn} sm:col-span-3`}>Add quietly</button>
         </form>
       </section>
     </div>
