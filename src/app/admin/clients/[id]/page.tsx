@@ -19,6 +19,7 @@ import { resendPhoneWelcome, saveSmsSettings, sendTestText, setUpPhone } from ".
 import { countryOf, EMERGENCY_AFTER_HOURS, TEMPLATE_HELP, templatesFor } from "@/lib/sms";
 import { displayUk, forwardingCodes } from "@/lib/phone";
 import { a2pStatus } from "@/lib/twilio";
+import { saveBranding } from "../../brand-actions";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -40,8 +41,11 @@ const MESSAGE_LABELS: Record<string, string> = {
   day30_report: "Day-30 report task created",
 };
 
-export default async function ClientPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ sms_ok?: string; sms_err?: string }> }) {
-  const { sms_ok: smsOk, sms_err: smsErr } = await searchParams;
+const isoDaysAgo = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString();
+
+export default async function ClientPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ sms_ok?: string; sms_err?: string; brand_ok?: string; brand_err?: string }> }) {
+  const sp = await searchParams;
+  const { sms_ok: smsOk, sms_err: smsErr } = sp;
   const { id } = await params;
   const supabase = db();
   const { data: c } = await supabase.from("clients").select("*").eq("id", id).maybeSingle<Client>();
@@ -58,6 +62,22 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
   type SmsRow = { id: string; created_at: string; to_number: string; kind: string; status: string; error: string | null };
   const { data: smsLog } = await supabase.from("sms_log").select("id, created_at, to_number, kind, status, error").eq("client_id", id).order("created_at", { ascending: false }).limit(8).returns<SmsRow[]>();
   const a2p = c.country === "US" && c.messaging_service_sid ? await a2pStatus(c.messaging_service_sid) : null;
+  // Reviews and invoices at a glance (last 30 days for reviews, latest for documents).
+  const since30 = isoDaysAgo(30);
+  const [{ data: rJobs }, { data: rShared }, { data: rDocs }] = await Promise.all([
+    db().from("jobs").select("rating, feedback, feedback_at, review_clicked_at, created_at, contacts(name)").eq("client_id", c.id).gte("created_at", since30).order("created_at", { ascending: false }).returns<{ rating: number | null; feedback: string | null; feedback_at: string | null; review_clicked_at: string | null; created_at: string; contacts: { name: string | null } | null }[]>(),
+    db().from("review_ratings").select("rating, feedback, went_to_google, created_at").eq("client_id", c.id).gte("created_at", since30).order("created_at", { ascending: false }).returns<{ rating: number; feedback: string | null; went_to_google: boolean; created_at: string }[]>(),
+    db().from("documents").select("id, kind, number, status, total_pence, currency, created_at").eq("client_id", c.id).order("created_at", { ascending: false }).limit(5).returns<{ id: string; kind: string; number: number; status: string; total_pence: number; currency: string; created_at: string }[]>(),
+  ]);
+  const ratings = [...(rJobs ?? []).map((j) => j.rating), ...(rShared ?? []).map((r) => r.rating)].filter((n): n is number => !!n);
+  const avgRating = ratings.length ? (ratings.reduce((a, b) => a + b, 0) / ratings.length).toFixed(1) : null;
+  const toGoogle = (rJobs ?? []).filter((j) => j.review_clicked_at).length + (rShared ?? []).filter((r) => r.went_to_google).length;
+  const feedbackList = [
+    ...(rJobs ?? []).filter((j) => j.feedback).map((j) => ({ at: j.feedback_at ?? j.created_at, who: j.contacts?.name ?? "Customer", rating: j.rating, text: j.feedback! })),
+    ...(rShared ?? []).filter((r) => r.feedback).map((r) => ({ at: r.created_at, who: "Review page", rating: r.rating, text: r.feedback! })),
+  ].sort((a, b) => b.at.localeCompare(a.at)).slice(0, 3);
+  const appBase = `${env.appUrl}/m/${c.dashboard_token}`;
+
   // How many phones have notifications on, so you can confirm on the setup call.
   const { count: pushPhones } = await db().from("push_subscriptions").select("id", { count: "exact", head: true }).eq("client_id", c.id);
   const previewUrl = site ? `${env.appUrl}/s/${site.slug}` : null;
@@ -134,6 +154,87 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
                   ))}
               </dl>
             )}
+          </Card>
+
+          <Card title="Branding (quotes, invoices, review page)">
+            <form id="brand" action={saveBranding} className="space-y-2 text-sm">
+              <input type="hidden" name="clientId" value={c.id} />
+              {sp.brand_ok && <p className="rounded bg-green-50 p-2 text-green-800">Branding saved.</p>}
+              {sp.brand_err && <p className="rounded bg-red-50 p-2 text-red-800">{sp.brand_err}</p>}
+              <div className="flex items-center gap-3">
+                {c.logo_url ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={c.logo_url} alt="Logo" className="h-12 max-w-[160px] rounded border border-neutral-200 bg-white object-contain p-1" />
+                ) : (
+                  <span className="text-neutral-500">No logo yet</span>
+                )}
+                <input name="logo" type="file" accept="image/png,image/jpeg" className="text-xs" />
+              </div>
+              <label className="flex items-center gap-2">
+                Brand colour <input name="brandColor" type="color" defaultValue={c.brand_color ?? "#2a78d6"} className="h-8 w-14" />
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <input name="businessPhone" defaultValue={c.invoice_details?.businessPhone} placeholder="Business phone" className={input} />
+                <input name="businessEmail" defaultValue={c.invoice_details?.businessEmail ?? c.email} placeholder="Business email" className={input} />
+                <input name="website" defaultValue={c.invoice_details?.website ?? c.live_url ?? ""} placeholder="Website" className={input} />
+                <input name="companyNumber" defaultValue={c.invoice_details?.companyNumber} placeholder="Company number" className={input} />
+                <input name="vatNumber" defaultValue={c.invoice_details?.vatNumber} placeholder="VAT number" className={input} />
+              </div>
+              <textarea name="businessAddress" rows={2} defaultValue={c.invoice_details?.businessAddress} placeholder="Business address" className={`${input} w-full`} />
+              <button className={btn}>Save branding</button>
+            </form>
+          </Card>
+
+          <Card title="Reviews and invoices">
+            <div className="space-y-4 text-sm">
+              <div>
+                <p className="font-medium">Review funnel</p>
+                <p className="text-neutral-600">
+                  Review page:{" "}
+                  <a className="break-all underline" href={`${env.appUrl}/review/${c.review_slug}`} target="_blank" rel="noreferrer">{`${env.appUrl}/review/${c.review_slug}`}</a>
+                </p>
+                <p className="text-xs text-neutral-500">Every review text links to their funnel automatically. 4 to 5 stars go to Google, 1 to 3 stars come to them privately.</p>
+                {!c.google_review_url && <p className="mt-1 rounded bg-amber-50 p-2 text-amber-900">No Google review link yet: happy customers can&apos;t be sent to Google until you add it below.</p>}
+                <div className="mt-2 grid grid-cols-4 gap-2 text-center">
+                  <div className="rounded bg-neutral-50 p-2"><p className="text-lg font-semibold">{(rJobs ?? []).length}</p><p className="text-xs text-neutral-500">requests (30d)</p></div>
+                  <div className="rounded bg-neutral-50 p-2"><p className="text-lg font-semibold">{ratings.length}</p><p className="text-xs text-neutral-500">ratings</p></div>
+                  <div className="rounded bg-neutral-50 p-2"><p className="text-lg font-semibold">{avgRating ? `${avgRating}★` : "-"}</p><p className="text-xs text-neutral-500">average</p></div>
+                  <div className="rounded bg-neutral-50 p-2"><p className="text-lg font-semibold">{toGoogle}</p><p className="text-xs text-neutral-500">sent to Google</p></div>
+                </div>
+                {feedbackList.length > 0 && (
+                  <ul className="mt-2 space-y-1">
+                    {feedbackList.map((f, i) => (
+                      <li key={i} className="rounded bg-amber-50 p-2 text-xs text-amber-950">
+                        <strong>{f.who}{f.rating ? ` (${f.rating}★)` : ""}:</strong> {f.text}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+              <div>
+                <p className="font-medium">Quotes and invoices</p>
+                {(rDocs ?? []).length === 0 ? (
+                  <p className="text-neutral-500">None yet.</p>
+                ) : (
+                  <ul className="divide-y divide-neutral-100">
+                    {(rDocs ?? []).map((d) => (
+                      <li key={d.id} className="flex items-center justify-between py-1.5">
+                        <span className="capitalize">{d.kind} #{d.number} <span className="text-neutral-500">· {d.status}</span></span>
+                        <span className="flex items-center gap-3">
+                          <span>{new Intl.NumberFormat(d.currency === "USD" ? "en-US" : "en-GB", { style: "currency", currency: d.currency }).format(d.total_pence / 100)}</span>
+                          <a className="text-blue-700 underline" href={`${appBase}/docs/${d.id}/pdf`} target="_blank" rel="noreferrer">PDF</a>
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <a className={btnQuiet} href={`${appBase}/docs/new?kind=quote`} target="_blank" rel="noreferrer">New quote</a>
+                  <a className={btnQuiet} href={`${appBase}/docs/new?kind=invoice`} target="_blank" rel="noreferrer">New invoice</a>
+                  <a className={btnQuiet} href={`${appBase}/docs`} target="_blank" rel="noreferrer">All in their app</a>
+                </div>
+              </div>
+            </div>
           </Card>
 
           <Card title={`Leads from website (${leads?.length ?? 0})`}>

@@ -22,7 +22,7 @@ export default async function More({ params }: { params: Promise<{ token: string
     { href: `/m/${token}/stats`, icon: "📈", title: "Results", sub: "This month's missed calls, replies and reviews" },
     { href: `/m/${token}/more/templates`, icon: "⚡", title: "Saved replies", sub: "Quick messages you send often" },
     { href: `/m/${token}/more/booking`, icon: "📅", title: "Booking link and hours", sub: c.booking_enabled ? "On: customers can book themselves" : "Off" },
-    { href: `/m/${token}/more/payments`, icon: "🏦", title: "Invoice and payment details", sub: "Your address, VAT, how customers pay you" },
+    { href: `/m/${token}/more/payments`, icon: "🏦", title: "Business details and branding", sub: "Logo, colour, address, VAT, how customers pay you" },
   ];
   return (
     <AppShell token={token} active="more" unread={unread} title="More">

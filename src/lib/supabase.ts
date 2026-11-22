@@ -60,6 +60,9 @@ export type Client = {
   booking_notice_hours: number;
   booking_days_ahead: number;
   invoice_details: InvoiceDetails;
+  brand_color: string | null; // "#F2B705": buttons and accents on quotes, invoices and the review page
+  logo_url: string | null; // public URL (PNG or JPG so it can go on PDFs)
+  review_slug: string; // shareable review page: /review/<review_slug>
 };
 
 /** What goes on a client's quotes and invoices, and how their customers pay. */
@@ -74,6 +77,10 @@ export type InvoiceDetails = {
   accountNumber?: string;
   routingNumber?: string; // US
   paymentTerms?: string;
+  businessPhone?: string; // shown on documents and the review page; defaults to the owner's mobile
+  businessEmail?: string;
+  website?: string;
+  companyNumber?: string;
 };
 
 export type Task = {

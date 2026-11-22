@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { db, type InvoiceDetails } from "@/lib/supabase";
 import { clientFromForm } from "./data";
+import { normalizeHex, uploadLogo } from "@/lib/brand";
 
 const str = (f: FormData, k: string) => String(f.get(k) ?? "").trim();
 
@@ -38,7 +39,23 @@ export async function savePaymentSettings(f: FormData) {
     routingNumber: str(f, "routingNumber") || undefined,
     accountNumber: str(f, "accountNumber") || undefined,
     paymentTerms: str(f, "paymentTerms") || undefined,
+    businessPhone: str(f, "businessPhone") || undefined,
+    businessEmail: str(f, "businessEmail") || undefined,
+    website: str(f, "website") || undefined,
+    companyNumber: str(f, "companyNumber") || undefined,
   };
-  await db().from("clients").update({ invoice_details: details }).eq("id", c.id);
-  redirect(`/m/${c.dashboard_token}/more/payments?ok=${encodeURIComponent("Saved.")}`);
+  const back = `/m/${c.dashboard_token}/more/payments`;
+  const color = str(f, "brandColor") ? normalizeHex(str(f, "brandColor")) : null;
+  let logoUrl = c.logo_url;
+  const logo = f.get("logo");
+  if (logo instanceof File && logo.size > 0) {
+    try {
+      logoUrl = await uploadLogo(c.id, logo);
+    } catch (err) {
+      redirect(`${back}?err=${encodeURIComponent(err instanceof Error ? err.message : "Couldn't save the logo.")}`);
+    }
+  }
+  if (f.get("removeLogo") === "on") logoUrl = null;
+  await db().from("clients").update({ invoice_details: details, brand_color: color, logo_url: logoUrl }).eq("id", c.id);
+  redirect(`${back}?ok=${encodeURIComponent("Saved.")}`);
 }

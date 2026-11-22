@@ -14,14 +14,39 @@ export default async function PaymentSettings({ params, searchParams }: { params
   const us = c.country === "US";
   return (
     <>
-      <SubHeader back={`/m/${token}/more`} title="Invoice and payment details" />
+      <SubHeader back={`/m/${token}/more`} title="Business details and branding" />
       <Flash ok={sp.ok} err={sp.err} />
       <main className="mx-auto max-w-xl p-4 pb-16">
         <form action={savePaymentSettings} className="space-y-4">
           <input type="hidden" name="token" value={token} />
+          <section className="space-y-3 rounded-2xl bg-white p-4 shadow-sm">
+            <h2 className="font-semibold">Your branding</h2>
+            <p className="text-sm text-neutral-600">Shown on your quotes, invoices, PDFs and the review page your customers see.</p>
+            {c.logo_url && (
+              <div className="flex items-center gap-3">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={c.logo_url} alt="Your logo" className="h-14 max-w-[180px] rounded border border-neutral-200 bg-white object-contain p-1" />
+                <label className="flex items-center gap-2 text-sm text-neutral-600">
+                  <input type="checkbox" name="removeLogo" /> Remove
+                </label>
+              </div>
+            )}
+            <label className="block text-sm text-neutral-600">
+              {c.logo_url ? "Replace logo" : "Logo"} (PNG or JPG)
+              <input name="logo" type="file" accept="image/png,image/jpeg" className="mt-1 block w-full text-sm" />
+            </label>
+            <label className="flex items-center gap-3 text-sm text-neutral-600">
+              Brand colour
+              <input name="brandColor" type="color" defaultValue={c.brand_color ?? "#2a78d6"} className="h-10 w-16 rounded border border-neutral-200" />
+            </label>
+          </section>
           <section className="space-y-2 rounded-2xl bg-white p-4 shadow-sm">
             <h2 className="font-semibold">On your quotes and invoices</h2>
+            <input name="businessPhone" defaultValue={d.businessPhone} placeholder="Business phone" className={field} />
+            <input name="businessEmail" type="email" defaultValue={d.businessEmail} placeholder="Business email" className={field} />
+            <input name="website" defaultValue={d.website} placeholder="Website" className={field} />
             <textarea name="businessAddress" rows={3} defaultValue={d.businessAddress} placeholder="Business address" className={field} />
+            <input name="companyNumber" defaultValue={d.companyNumber} placeholder={us ? "Business registration number (optional)" : "Company number (optional)"} className={field} />
             <input name="vatNumber" defaultValue={d.vatNumber} placeholder={us ? "Tax ID (optional)" : "VAT number (if VAT registered)"} className={field} />
             <label className="block text-sm text-neutral-600">
               Default {us ? "sales tax" : "VAT"} %
