@@ -90,7 +90,7 @@ export default async function BookingPage({ params, searchParams }: { params: Pr
                 <textarea name="notes" rows={2} defaultValue={a.notes ?? ""} placeholder="Notes" className={field} />
                 {contact && (
                   <label className="flex items-center gap-2 text-sm">
-                    <input type="checkbox" name="notify" defaultChecked className="size-4" /> Text the customer if the time changes
+                    <input type="checkbox" name="notify" defaultChecked className="size-4" /> Let the customer know if the time changes (email if we have it)
                   </label>
                 )}
                 <button className={primaryBtn}>Save changes</button>

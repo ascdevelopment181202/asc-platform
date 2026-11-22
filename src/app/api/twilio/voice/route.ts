@@ -3,7 +3,7 @@ import { db } from "@/lib/supabase";
 import { notifyClient } from "@/lib/push";
 import { displayPhone, isTextable, normalizePhone, countryCode } from "@/lib/phone";
 import { isFromTwilio, readTwilioForm, sayAndHangUp, twiml } from "@/lib/twilio";
-import { bumpConversation, countryOf, clientByTwilioNumber, missedCallText, REPEAT_CALLER_MS, sendSms, upsertContact } from "@/lib/sms";
+import { ACTIVE_CONVERSATION_MS, bumpConversation, countryOf, clientByTwilioNumber, missedCallText, REPEAT_CALLER_MS, sendSms, upsertContact } from "@/lib/sms";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -35,6 +35,13 @@ export async function POST(request: Request) {
     const contact = await upsertContact(client.id, from);
     contactId = contact.id;
     if (contact.opted_out_at) skipped = "opted_out";
+    else if (contact.sms_undeliverable_at) skipped = "undeliverable";
+    else if (
+      contact.last_message_at &&
+      (contact.last_message_direction === "inbound" || contact.last_message_direction === "outbound") &&
+      now.getTime() - Date.parse(contact.last_message_at) < ACTIVE_CONVERSATION_MS
+    )
+      skipped = "active_conversation"; // they're already texting each other: the owner will ring back
     else {
       const { count } = await db()
         .from("calls")

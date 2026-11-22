@@ -25,6 +25,8 @@ export type Contact = {
   stage: Stage | null;
   stage_changed_at: string | null;
   job_value_pence: number | null;
+  sms_undeliverable_at: string | null; // set when texts to this number keep failing; we stop texting it
+  sms_fail_count: number;
 };
 
 export type Stage = "new" | "quoted" | "booked" | "done" | "paid" | "lost";
@@ -45,10 +47,10 @@ export type Job = {
   cancelled_reason: string | null;
 };
 
-export type SmsKind = "missed_call" | "review" | "owner_forward" | "owner_confirm" | "test" | "manual";
+export type SmsKind = "missed_call" | "review" | "owner_forward" | "owner_confirm" | "test" | "manual" | "campaign";
 
 /** Texts that belong in the customer conversation (the rest are system texts to the owner). */
-const CONVERSATION_KINDS: SmsKind[] = ["missed_call", "review", "manual"];
+const CONVERSATION_KINDS: SmsKind[] = ["missed_call", "review", "manual", "campaign"];
 
 const HOUR = 3600_000;
 const DAY = 24 * HOUR;
@@ -104,7 +106,10 @@ export function scheduleSummary(c: Pick<Client, "review_settings">) {
 /** Don't ask the same customer for another review within this window. */
 export const REVIEW_COOLDOWN_MS = 180 * DAY;
 /** A caller who rings again within this window doesn't get a second text. */
-export const REPEAT_CALLER_MS = 30 * 60_000;
+/** One missed-call text per caller per day: a second text for a second missed call just costs money. */
+export const REPEAT_CALLER_MS = 24 * 60 * 60_000;
+/** If the owner and customer have been texting in the last day, a missed call needs no auto-text. */
+export const ACTIVE_CONVERSATION_MS = 24 * 60 * 60_000;
 /** Bulk uploads go out at most this many per client per day. */
 export const BULK_PER_DAY = 40;
 
@@ -304,6 +309,11 @@ export async function upsertContact(clientId: string, phone: string, name?: stri
 export async function sendSms(p: { client: Client; to: string; body: string; kind: SmsKind; contactId?: string | null }) {
   // Plain GSM characters only: one curly apostrophe or emoji would make Twilio bill up to 3 times as much.
   p = { ...p, body: toGsm(p.body) };
+  // Don't pay to text a number that has already proved it can't receive texts.
+  if (p.contactId && !p.kind.startsWith("owner")) {
+    const { data: ct } = await db().from("contacts").select("sms_undeliverable_at").eq("id", p.contactId).maybeSingle<{ sms_undeliverable_at: string | null }>();
+    if (ct?.sms_undeliverable_at) return { ok: false as const, logId: null, error: "This number can't receive texts" };
+  }
   const { data: log } = await db()
     .from("sms_log")
     .insert({ client_id: p.client.id, contact_id: p.contactId ?? null, to_number: p.to, body: p.body, kind: p.kind, segments: segmentsOf(p.body) })

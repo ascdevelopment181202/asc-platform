@@ -80,6 +80,8 @@ export type Client = {
   competitor_rating: number | null;
   competitor_review_count: number | null;
   review_settings: Partial<import("./sms").ReviewSettings> | null; // timing of review texts; see reviewSettings()
+  campaign_monthly_limit: number; // campaign texts included each month
+  sms_budget_gbp: number | null; // email ASC when a month's texting passes this
 };
 
 /** What goes on a client's quotes and invoices, and how their customers pay. */

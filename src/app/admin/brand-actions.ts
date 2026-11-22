@@ -126,3 +126,18 @@ function settingsFrom(f: FormData): ReviewSettings {
     },
   });
 }
+
+/** Monthly texting budget (alert) and campaign allowance for one client. */
+export async function saveUsageSettings(f: FormData) {
+  const id = str(f, "clientId");
+  const budget = str(f, "sms_budget_gbp");
+  await db()
+    .from("clients")
+    .update({
+      sms_budget_gbp: budget === "" ? null : Math.max(0, Number(budget) || 0),
+      campaign_monthly_limit: Math.max(0, Number.parseInt(str(f, "campaign_monthly_limit"), 10) || 0),
+    })
+    .eq("id", id);
+  revalidatePath(`/admin/clients/${id}`);
+  redirect(`/admin/clients/${id}?ok=${encodeURIComponent("Texting limits saved.")}`);
+}

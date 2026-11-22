@@ -1,4 +1,5 @@
 import { after } from "next/server";
+import { emailOwner } from "@/lib/owner-email";
 import { clip } from "@/lib/sms-text";
 import { db, type Client } from "@/lib/supabase";
 import { notifyClient } from "@/lib/push";
@@ -65,8 +66,13 @@ export async function POST(request: Request) {
   // Any reply stops the remaining review reminders; the owner takes it from here.
   await cancelPendingReviews(contact.id, "replied");
 
-  // Texting the owner costs money; a notification is free. Only text them when their phone can't get notifications.
+  // Texting the owner costs money; a notification is free. Without notifications on their phone, email them (free),
+  // and text them too only if ASC has switched that on for this client.
   const { count: pushSubs } = await db().from("push_subscriptions").select("id", { count: "exact", head: true }).eq("client_id", client.id);
+  if (!pushSubs) {
+    const who = contact.name ?? displayPhone(from);
+    after(() => emailOwner(client, `New message from ${who}`, [`${who} texted:`, `"${body.slice(0, 1000)}"`], { label: "Reply in your app", url: threadLink(client, contact.id) }).catch((e) => console.error("owner email failed", e)));
+  }
   if (client.owner_mobile && client.forward_replies && !pushSubs) {
     const who = contact.name ?? displayPhone(from);
     const link = threadLink(client, contact.id);

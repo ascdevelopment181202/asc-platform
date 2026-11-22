@@ -1,5 +1,6 @@
 "use server";
 
+import { messageCustomer, validEmail } from "@/lib/customer-email";
 import { firstThatFits } from "@/lib/sms-text";
 import { redirect } from "next/navigation";
 import { after } from "next/server";
@@ -36,6 +37,11 @@ export async function bookSlot(f: FormData) {
   const address = str(f, "address");
   const what = str(f, "what");
   if (address && !contact.address) await db().from("contacts").update({ address }).eq("id", contact.id);
+  const email = str(f, "email").slice(0, 200);
+  if (validEmail(email) && !contact.email) {
+    await db().from("contacts").update({ email }).eq("id", contact.id);
+    contact.email = email;
+  }
   const starts = zonedToUtc(day, time, c.timezone || "Europe/London");
   const ends = new Date(starts.getTime() + (c.booking_slot_minutes || 60) * 60_000);
   await db().from("appointments").insert({
@@ -54,9 +60,12 @@ export async function bookSlot(f: FormData) {
 
   after(async () => {
     await notifyClient(c.id, { title: `New booking: ${name}`, body: `${when}${what ? ` · ${what.slice(0, 80)}` : ""}`, url: `/m/${c.dashboard_token}/c/${contact.id}`, tag: contact.id });
-    if (!contact.opted_out_at) {
-      await sendSms({ client: c, to: phone, kind: "manual", contactId: contact.id, body: firstThatFits([`Hi ${name.split(/\s+/)[0]}, you're booked in with ${clientLabel(c)} on ${when}. Reply to this text if you need to change it.`, `You're booked with ${clientLabel(c)}: ${when}. Reply to change it.`]) });
-    }
+    await messageCustomer({
+      client: c,
+      contact,
+      text: firstThatFits([`Hi ${name.split(/\s+/)[0]}, you're booked in with ${clientLabel(c)} on ${when}. Reply to this text if you need to change it.`, `You're booked with ${clientLabel(c)}: ${when}. Reply to change it.`]),
+      email: { subject: `You're booked in with ${clientLabel(c)}`, paragraphs: [`Hi ${name.split(/\s+/)[0]},`, `Thanks for booking. You're booked in for ${when}.`, "Just reply to this email if you need to change anything."] },
+    });
   });
   redirect(`/b/${token}?done=1&when=${encodeURIComponent(when)}`);
 }

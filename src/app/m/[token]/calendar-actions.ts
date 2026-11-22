@@ -1,5 +1,6 @@
 "use server";
 
+import { messageCustomer } from "@/lib/customer-email";
 import { firstThatFits } from "@/lib/sms-text";
 import { cancelBookingReview } from "@/lib/review-autopilot";
 import { redirect } from "next/navigation";
@@ -56,16 +57,16 @@ export async function createAppointment(f: FormData) {
 
   if (contact) {
     await setStage(contact, "booked");
-    if (f.get("confirm") === "on" && !contact.opted_out_at) {
-      await sendSms({
+    if (f.get("confirm") === "on") {
+      const when = whenLabel(c, starts.toISOString());
+      await messageCustomer({
         client: c,
-        to: contact.phone,
-        kind: "manual",
-        contactId: contact.id,
-        body: firstThatFits([
-          `Hi ${firstName(contact.name)}, you're booked in with ${clientLabel(c)} on ${whenLabel(c, starts.toISOString())}. Reply to this text if you need to change it.`,
-          `You're booked with ${clientLabel(c)}: ${whenLabel(c, starts.toISOString())}. Reply to change it.`,
+        contact,
+        text: firstThatFits([
+          `Hi ${firstName(contact.name)}, you're booked in with ${clientLabel(c)} on ${when}. Reply to this text if you need to change it.`,
+          `You're booked with ${clientLabel(c)}: ${when}. Reply to change it.`,
         ]),
+        email: { subject: `You're booked in with ${clientLabel(c)}`, paragraphs: [`Hi ${firstName(contact.name)},`, `You're booked in for ${when}${title ? ` (${title})` : ""}.`, "Just reply to this email if you need to change anything."] },
       });
     }
   }
@@ -99,8 +100,14 @@ export async function updateAppointment(f: FormData) {
       ...(moved ? { reminder_sent_at: null } : {}),
     })
     .eq("id", appt.id);
-  if (moved && contact && f.get("notify") === "on" && !contact.opted_out_at) {
-    await sendSms({ client: c, to: contact.phone, kind: "manual", contactId: contact.id, body: firstThatFits([`Hi ${firstName(contact.name)}, your booking with ${clientLabel(c)} has moved to ${whenLabel(c, starts.toISOString())}. Reply if that doesn't work.`, `Your booking with ${clientLabel(c)} is now ${whenLabel(c, starts.toISOString())}. Reply if that doesn't work.`]) });
+  if (moved && contact && f.get("notify") === "on") {
+    const when = whenLabel(c, starts.toISOString());
+    await messageCustomer({
+      client: c,
+      contact,
+      text: firstThatFits([`Hi ${firstName(contact.name)}, your booking with ${clientLabel(c)} has moved to ${when}. Reply if that doesn't work.`, `Your booking with ${clientLabel(c)} is now ${when}. Reply if that doesn't work.`]),
+      email: { subject: `Your booking with ${clientLabel(c)} has moved`, paragraphs: [`Hi ${firstName(contact.name)},`, `Your booking has moved to ${when}.`, "Reply to this email if that doesn't work for you."] },
+    });
   }
   back(page, "ok", "Booking updated.");
 }
@@ -121,8 +128,14 @@ export async function cancelAppointment(f: FormData) {
   const { c, appt, contact, page } = await apptFromForm(f);
   await db().from("appointments").update({ status: "cancelled" }).eq("id", appt.id);
   await cancelBookingReview(appt.id);
-  if (contact && f.get("notify") === "on" && !contact.opted_out_at) {
-    await sendSms({ client: c, to: contact.phone, kind: "manual", contactId: contact.id, body: firstThatFits([`Hi ${firstName(contact.name)}, your booking with ${clientLabel(c)} on ${whenLabel(c, appt.starts_at)} has been cancelled. Reply to rearrange.`, `Your ${clientLabel(c)} booking on ${whenLabel(c, appt.starts_at)} is cancelled. Reply to rearrange.`]) });
+  if (contact && f.get("notify") === "on") {
+    const when = whenLabel(c, appt.starts_at);
+    await messageCustomer({
+      client: c,
+      contact,
+      text: firstThatFits([`Hi ${firstName(contact.name)}, your booking with ${clientLabel(c)} on ${when} has been cancelled. Reply to rearrange.`, `Your ${clientLabel(c)} booking on ${when} is cancelled. Reply to rearrange.`]),
+      email: { subject: `Your booking with ${clientLabel(c)} is cancelled`, paragraphs: [`Hi ${firstName(contact.name)},`, `Your booking on ${when} has been cancelled.`, "Reply to this email to rearrange."] },
+    });
   }
   back(page, "ok", "Booking cancelled.");
 }
