@@ -41,6 +41,8 @@ const MESSAGE_LABELS: Record<string, string> = {
   day30_report: "Day-30 report task created",
 };
 
+const isoDaysAgo = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString();
+
 export default async function ClientPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ sms_ok?: string; sms_err?: string; brand_ok?: string; brand_err?: string }> }) {
   const sp = await searchParams;
   const { sms_ok: smsOk, sms_err: smsErr } = sp;
@@ -61,7 +63,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
   const { data: smsLog } = await supabase.from("sms_log").select("id, created_at, to_number, kind, status, error").eq("client_id", id).order("created_at", { ascending: false }).limit(8).returns<SmsRow[]>();
   const a2p = c.country === "US" && c.messaging_service_sid ? await a2pStatus(c.messaging_service_sid) : null;
   // Reviews and invoices at a glance (last 30 days for reviews, latest for documents).
-  const since30 = new Date(Date.now() - 30 * 86_400_000).toISOString();
+  const since30 = isoDaysAgo(30);
   const [{ data: rJobs }, { data: rShared }, { data: rDocs }] = await Promise.all([
     db().from("jobs").select("rating, feedback, feedback_at, review_clicked_at, created_at, contacts(name)").eq("client_id", c.id).gte("created_at", since30).order("created_at", { ascending: false }).returns<{ rating: number | null; feedback: string | null; feedback_at: string | null; review_clicked_at: string | null; created_at: string; contacts: { name: string | null } | null }[]>(),
     db().from("review_ratings").select("rating, feedback, went_to_google, created_at").eq("client_id", c.id).gte("created_at", since30).order("created_at", { ascending: false }).returns<{ rating: number; feedback: string | null; went_to_google: boolean; created_at: string }[]>(),
@@ -189,7 +191,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
                 <p className="font-medium">Review funnel</p>
                 <p className="text-neutral-600">
                   Review page:{" "}
-                  <a className="break-all underline" href={`${env.appUrl}/r/${c.review_slug}`} target="_blank" rel="noreferrer">{`${env.appUrl}/r/${c.review_slug}`}</a>
+                  <a className="break-all underline" href={`${env.appUrl}/review/${c.review_slug}`} target="_blank" rel="noreferrer">{`${env.appUrl}/review/${c.review_slug}`}</a>
                 </p>
                 <p className="text-xs text-neutral-500">Every review text links to their funnel automatically. 4 to 5 stars go to Google, 1 to 3 stars come to them privately.</p>
                 {!c.google_review_url && <p className="mt-1 rounded bg-amber-50 p-2 text-amber-900">No Google review link yet: happy customers can&apos;t be sent to Google until you add it below.</p>}

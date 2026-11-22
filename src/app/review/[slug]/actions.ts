@@ -13,14 +13,14 @@ export async function rateShared(formData: FormData) {
   const slug = String(formData.get("slug") ?? "");
   const rating = Number(formData.get("rating"));
   const c = await loadClientBySlug(slug);
-  if (!c || !(rating >= 1 && rating <= 5)) redirect(`/r/${slug}`);
+  if (!c || !(rating >= 1 && rating <= 5)) redirect(`/review/${slug}`);
   if (rating >= 4) {
     await db().from("review_ratings").insert({ client_id: c.id, rating, went_to_google: !!c.google_review_url });
     after(() => notifyClient(c.id, { title: `${"⭐".repeat(rating)} on your review page`, body: c.google_review_url ? "They've gone to Google to post it." : "Add your Google review link so happy customers can post it.", url: `/m/${c.dashboard_token}/reviews` }));
     if (c.google_review_url) redirect(c.google_review_url);
-    redirect(`/r/${slug}?step=thanks`);
+    redirect(`/review/${slug}?step=thanks`);
   }
-  redirect(`/r/${slug}?step=feedback&r=${rating}`);
+  redirect(`/review/${slug}?step=feedback&r=${rating}`);
 }
 
 /** Private feedback from the shareable page: saved to the customer's conversation (by phone) and sent to the owner. */
@@ -30,8 +30,8 @@ export async function feedbackShared(formData: FormData) {
   const name = String(formData.get("name") ?? "").trim().slice(0, 80);
   const message = String(formData.get("message") ?? "").trim().slice(0, 2000);
   const c = await loadClientBySlug(slug);
-  if (!c) redirect(`/r/${slug}`);
-  if (!message) redirect(`/r/${slug}?step=feedback&err=1${rating ? `&r=${rating}` : ""}`);
+  if (!c) redirect(`/review/${slug}`);
+  if (!message) redirect(`/review/${slug}?step=feedback&err=1${rating ? `&r=${rating}` : ""}`);
 
   const phone = normalizePhone(String(formData.get("phone") ?? ""), countryOf(c));
   const contact = phone && isTextable(phone, countryOf(c)) ? await upsertContact(c.id, phone, name || null) : null;
@@ -46,5 +46,5 @@ export async function feedbackShared(formData: FormData) {
     body: message.slice(0, 140),
     url: contact ? `/m/${c.dashboard_token}/c/${contact.id}` : `/m/${c.dashboard_token}/reviews`,
   });
-  redirect(`/r/${slug}?step=thanks&sent=1`);
+  redirect(`/review/${slug}?step=thanks&sent=1`);
 }

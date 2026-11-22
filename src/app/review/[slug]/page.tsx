@@ -35,7 +35,7 @@ export default async function SharedReviewPage({ params, searchParams }: Props) 
       id={["slug", slug]}
       rateAction={rateShared}
       feedbackAction={feedbackWithRating}
-      googleLink={c.google_review_url ? `/r/${slug}/google` : null}
+      googleLink={c.google_review_url ? `/review/${slug}/google` : null}
       askContact
       sentFeedback={!!sent}
     />

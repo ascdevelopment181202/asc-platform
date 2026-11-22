@@ -71,7 +71,7 @@ export default async function Reviews({ params, searchParams }: { params: Promis
             Happy customers (4 or 5 stars) go straight to Google. Anyone less happy tells you privately first, so you can put it right. Every review text uses it automatically. Share the link anywhere else too: WhatsApp, email, a QR code on your van.
           </p>
           {!c.google_review_url && <p className="mt-2 rounded-lg bg-amber-50 p-2 text-sm text-amber-900">Your Google review link isn&apos;t set yet. ASC will add it.</p>}
-          <ShareLink url={`${env.appUrl}/r/${c.review_slug}`} business={brandOf(c).name} />
+          <ShareLink url={`${env.appUrl}/review/${c.review_slug}`} business={brandOf(c).name} />
         </section>
 
         <section className="rounded-2xl bg-white shadow-sm">

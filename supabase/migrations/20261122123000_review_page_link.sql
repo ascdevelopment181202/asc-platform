@@ -1,4 +1,4 @@
--- ASC Platform: each client's shareable review page (/r/<slug>), separate from the per-job links in review texts.
+-- ASC Platform: each client's shareable review page (/review/<slug>), separate from the per-job links in review texts.
 alter table public.clients add column if not exists review_slug text unique default encode(extensions.gen_random_bytes(5), 'hex');
 update public.clients set review_slug = encode(extensions.gen_random_bytes(5), 'hex') where review_slug is null;
 alter table public.clients alter column review_slug set not null;
