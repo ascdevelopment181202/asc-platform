@@ -16,7 +16,7 @@ import type { Site } from "@/lib/sites";
 import { env } from "@/lib/env";
 import { btn, btnQuiet, Countdown, fmt, input, StatusPill } from "../../ui";
 import { resendPhoneWelcome, saveSmsSettings, sendTestText, setUpPhone } from "../../sms-actions";
-import { DEFAULT_TEMPLATES, TEMPLATE_HELP } from "@/lib/sms";
+import { countryOf, EMERGENCY_AFTER_HOURS, TEMPLATE_HELP, templatesFor } from "@/lib/sms";
 import { displayUk, forwardingCodes } from "@/lib/phone";
 import { a2pStatus } from "@/lib/twilio";
 
@@ -428,16 +428,19 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
                 <summary className="cursor-pointer text-neutral-600">Text templates (leave blank for the defaults)</summary>
                 <p className="mt-1 text-xs text-neutral-500">{TEMPLATE_HELP}</p>
                 {([
-                  ["missed_call_template", "Missed call, open", DEFAULT_TEMPLATES.missed_call],
-                  ["missed_call_after_hours_template", "Missed call, closed", DEFAULT_TEMPLATES.missed_call_after_hours],
-                  ["review_template", "Review request", DEFAULT_TEMPLATES.review],
-                  ["review_followup_template", "Review reminder", DEFAULT_TEMPLATES.review_followup],
+                  ["missed_call_template", "Missed call, open", templatesFor(c).missed_call],
+                  ["missed_call_after_hours_template", "Missed call, closed", templatesFor(c).missed_call_after_hours],
+                  ["review_template", "Review request", templatesFor(c).review],
+                  ["review_followup_template", "Review reminder", templatesFor(c).review_followup],
                 ] as const).map(([name, label, placeholder]) => (
                   <label key={name} className="mt-2 block text-xs">
                     {label}
                     <textarea name={name} rows={3} defaultValue={c[name] ?? ""} placeholder={placeholder} className={`${input} mt-1 w-full`} />
                   </label>
                 ))}
+                <p className="mt-2 text-xs text-neutral-500">
+                  Emergency call-out version of &ldquo;Missed call, closed&rdquo; (paste it in to use it): <span className="select-all">{EMERGENCY_AFTER_HOURS[countryOf(c)]}</span>
+                </p>
               </details>
               <label className="flex items-center gap-2">
                 <input type="checkbox" name="forward_replies" defaultChecked={c.forward_replies} /> Also text new customer messages to the owner&apos;s phone

@@ -58,17 +58,23 @@ export const REPEAT_CALLER_MS = 30 * 60_000;
 export const BULK_PER_DAY = 40;
 
 export const DEFAULT_TEMPLATES = {
-  missed_call: "Hi, it's {business}. Sorry we missed your call! We'll ring you back shortly, or reply to this text with what you need.",
-  missed_call_after_hours: "Hi, it's {business}. Sorry we missed you, we're closed right now. Reply with what you need and we'll get back to you first thing.",
+  missed_call: "Hi, it's {business}. Sorry we missed your call, we're probably on a job. What do you need help with? Reply here and we'll call you back shortly.",
+  missed_call_after_hours: "Hi, it's {business}. Sorry we missed you, we're closed right now. What do you need help with? Reply here and we'll get back to you first thing.",
   review: "Hi {name}, thanks for choosing {business}. If you were happy with the job, a quick Google review would really help us: {link}",
   review_followup: "Hi {name}, a quick reminder from {business}. If you have a minute, a Google review would mean a lot: {link} Reply STOP to opt out",
 };
 
+/** After-hours text for clients who do emergency call-outs (set from the onboarding form). */
+export const EMERGENCY_AFTER_HOURS = {
+  GB: "Hi, it's {business}. Sorry we missed you, we're closed right now. Reply with what you need and we'll get back to you first thing. If it's an emergency, reply URGENT.",
+  US: "Hi, it's {business}. Sorry we missed you, we're closed right now. Reply with what you need and we'll get back to you first thing. If it's an emergency, reply URGENT. Reply STOP to opt out",
+} as const;
+
 /** US carriers expect opt-out wording in the first text a number sends to someone. */
 const US_TEMPLATES = {
-  missed_call: "Hi, it's {business}. Sorry we missed your call! We'll call you back shortly, or reply to this text with what you need. Reply STOP to opt out",
-  missed_call_after_hours: "Hi, it's {business}. Sorry we missed you, we're closed right now. Reply with what you need and we'll get back to you first thing. Reply STOP to opt out",
-  review: "Hi {name}, thanks for choosing {business}. If you were happy with the job, a quick Google review would really help us: {link} Reply STOP to opt out",
+  missed_call: `${DEFAULT_TEMPLATES.missed_call} Reply STOP to opt out`,
+  missed_call_after_hours: `${DEFAULT_TEMPLATES.missed_call_after_hours} Reply STOP to opt out`,
+  review: `${DEFAULT_TEMPLATES.review} Reply STOP to opt out`,
   review_followup: DEFAULT_TEMPLATES.review_followup,
 };
 

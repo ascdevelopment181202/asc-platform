@@ -8,6 +8,7 @@ import { firstNameOf } from "@/lib/onboarding";
 import { describeHours, US_TIMEZONES, FIELD_LABELS, MAX_FILE_MB, MAX_PHOTOS, onboardingSchema, type OnboardingInput } from "@/lib/onboarding-fields";
 import { isTextable, normalizePhone } from "@/lib/phone";
 import { friendlyPhoneError, setUpPhoneForClient } from "@/lib/phone-setup";
+import { EMERGENCY_AFTER_HOURS } from "@/lib/sms";
 import { after } from "next/server";
 
 const BUILD_HOURS = 48;
@@ -105,6 +106,9 @@ export async function submitOnboarding(token: string, input: OnboardingInput): P
       owner_mobile: client.owner_mobile || (isTextable(ownerMobile, country) ? ownerMobile : null),
       business_hours: { start: answers.hoursStart, end: answers.hoursEnd, days: answers.hoursDays },
       google_review_url: client.google_review_url || reviewUrl,
+      // Emergency call-out businesses get an after-hours text that offers an URGENT reply.
+      missed_call_after_hours_template:
+        client.missed_call_after_hours_template || (answers.emergency === "Yes" ? EMERGENCY_AFTER_HOURS[country] : null),
     })
     .eq("id", client.id)
     .is("form_submitted_at", null)

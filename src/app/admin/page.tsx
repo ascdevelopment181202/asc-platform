@@ -148,6 +148,9 @@ export default async function AdminHome({ searchParams }: { searchParams: Promis
           <input name="mobile" placeholder="Their mobile (07...)" className={input} required />
           <input name="liveUrl" type="url" placeholder="Live website (optional)" className={input} />
           <input name="reviewUrl" type="url" placeholder="Google review link (optional)" className={input} />
+          <label className="flex items-center gap-2 text-sm sm:col-span-3">
+            <input type="checkbox" name="emergency" /> They do emergency call-outs (after-hours text offers &ldquo;reply URGENT&rdquo;)
+          </label>
           <button className={`${btn} sm:col-span-3`}>Add quietly</button>
         </form>
       </section>
