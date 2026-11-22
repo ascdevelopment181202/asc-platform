@@ -5,6 +5,7 @@ import { addClientManually, addClientQuietly, addTask, completeTask } from "./ac
 import { btn, btnQuiet, Countdown, fmt, input, StatusPill } from "./ui";
 import { googleAccount } from "@/lib/google";
 import { googleEnabled } from "@/lib/env";
+import { US_CARRIERS, US_TIMEZONES } from "@/lib/onboarding-fields";
 
 export const dynamic = "force-dynamic";
 
@@ -145,7 +146,22 @@ export default async function AdminHome({ searchParams }: { searchParams: Promis
           <input name="businessName" placeholder="Business name" className={input} required />
           <input name="fullName" placeholder="Contact name" className={input} required />
           <input name="email" type="email" placeholder="Email" className={input} required />
-          <input name="mobile" placeholder="Their mobile (07...)" className={input} required />
+          <input name="mobile" placeholder="Their mobile (07... or +1 for US)" className={input} required />
+          <select name="country" defaultValue="GB" className={input}>
+            <option value="GB">UK client</option>
+            <option value="US">US client</option>
+          </select>
+          <select name="usTimezone" defaultValue="Eastern" className={input}>
+            {Object.keys(US_TIMEZONES).map((k) => (
+              <option key={k} value={k}>US time zone: {k}</option>
+            ))}
+          </select>
+          <select name="carrier" defaultValue="" className={input}>
+            <option value="">US carrier (if US)</option>
+            {US_CARRIERS.map((k) => (
+              <option key={k} value={k}>{k}</option>
+            ))}
+          </select>
           <input name="liveUrl" type="url" placeholder="Live website (optional)" className={input} />
           <input name="reviewUrl" type="url" placeholder="Google review link (optional)" className={input} />
           <label className="flex items-center gap-2 text-sm sm:col-span-3">
