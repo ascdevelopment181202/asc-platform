@@ -62,14 +62,14 @@ export type ReviewSettings = {
   onPaid: boolean; // Mark as paid asks by default
   onStage: boolean; // moving a customer to Job done asks
 };
-export const DEFAULT_REVIEW_SETTINGS: ReviewSettings = { firstDelayMin: 5, bookingDelayMin: 15, reminderDays: [10, 20], laterDays: 90, onPaid: true, onStage: true };
+export const DEFAULT_REVIEW_SETTINGS: ReviewSettings = { firstDelayMin: 2, bookingDelayMin: 3, reminderDays: [10, 20], laterDays: 90, onPaid: true, onStage: true };
 
 export function reviewSettings(c: Pick<Client, "review_settings">): ReviewSettings {
   const r = { ...DEFAULT_REVIEW_SETTINGS, ...(c.review_settings ?? {}) };
   const days = (Array.isArray(r.reminderDays) ? r.reminderDays : DEFAULT_REVIEW_SETTINGS.reminderDays).map(Number).filter((d) => d > 0 && d < 365).sort((a, b) => a - b).slice(0, 4);
   return {
-    firstDelayMin: Math.min(Math.max(Number(r.firstDelayMin) || 0, 1), 24 * 60),
-    bookingDelayMin: Math.min(Math.max(Number(r.bookingDelayMin) || 0, 5), 24 * 60),
+    firstDelayMin: Math.min(Math.max(Number(r.firstDelayMin) || 0, 1), 5),
+    bookingDelayMin: Math.min(Math.max(Number(r.bookingDelayMin) || 0, 1), 5),
     reminderDays: days,
     laterDays: Math.max(Number(r.laterDays) || 0, 0),
     onPaid: r.onPaid !== false,

@@ -24,7 +24,7 @@ const DAY = 86400_000;
 const QUIET_DAYS = 7;
 
 /**
- * Runs every 5 minutes (see vercel.json).
+ * Runs every minute (see vercel.json), so review texts go out within 5 minutes of the trigger.
  * 1. Sends review texts that are due, inside 9am to 7pm local time.
  * 2. Warns you when a client's forwarding seems to have stopped (no forwarded calls for a week).
  */
@@ -226,7 +226,11 @@ export async function GET(request: Request) {
       .order("reviews_synced_at", { ascending: true, nullsFirst: true })
       .limit(5)
       .returns<Client[]>();
+    const cutoff = new Date(now.getTime() - 30 * 60_000).toISOString();
     for (const c of due ?? []) {
+      // Claim the client so an overlapping run (the cron runs every minute) doesn't sync it twice.
+      const { data: claimed } = await db().from("clients").update({ reviews_synced_at: now.toISOString() }).eq("id", c.id).or(`reviews_synced_at.is.null,reviews_synced_at.lt.${cutoff}`).select("id");
+      if (!claimed?.length) continue;
       try {
         const { added } = await syncReviews(c);
         if (added) sent.push(`${added} new Google review(s) for ${clientLabel(c)}`);
