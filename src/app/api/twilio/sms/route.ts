@@ -1,4 +1,5 @@
 import { after } from "next/server";
+import { clip } from "@/lib/sms-text";
 import { db, type Client } from "@/lib/supabase";
 import { notifyClient } from "@/lib/push";
 import { isFromTwilio, readTwilioForm, twiml } from "@/lib/twilio";
@@ -64,9 +65,13 @@ export async function POST(request: Request) {
   // Any reply stops the remaining review reminders; the owner takes it from here.
   await cancelPendingReviews(contact.id, "replied");
 
-  if (client.owner_mobile && client.forward_replies) {
-    const who = contact.name ? `${contact.name} (${displayPhone(from)})` : displayPhone(from);
-    const text = `New message from ${who}: "${body.slice(0, 240)}" Reply here: ${threadLink(client, contact.id)}`;
+  // Texting the owner costs money; a notification is free. Only text them when their phone can't get notifications.
+  const { count: pushSubs } = await db().from("push_subscriptions").select("id", { count: "exact", head: true }).eq("client_id", client.id);
+  if (client.owner_mobile && client.forward_replies && !pushSubs) {
+    const who = contact.name ?? displayPhone(from);
+    const link = threadLink(client, contact.id);
+    const room = 160 - who.length - link.length - 6;
+    const text = `${who}: "${clip(body, room)}" ${link}`;
     const sent = await sendSms({ client, to: normalizePhone(client.owner_mobile, country)!, body: text, kind: "owner_forward", contactId: contact.id });
     if (sent.ok) await db().from("replies").update({ forwarded: true }).eq("id", reply.id);
   }

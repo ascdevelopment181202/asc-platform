@@ -4,6 +4,7 @@ import { clientLabel } from "./clients";
 import { env } from "./env";
 import { isTextable, localeFor, normalizePhone, type Country } from "./phone";
 import { twilioSend } from "./twilio";
+import { firstThatFits, segmentsOf, toGsm } from "./sms-text";
 import { setStage } from "./crm";
 
 export type Contact = {
@@ -107,32 +108,65 @@ export const REPEAT_CALLER_MS = 30 * 60_000;
 /** Bulk uploads go out at most this many per client per day. */
 export const BULK_PER_DAY = 40;
 
+// Every default text is written to fit one 160-character segment (one charge). When a name, job or
+// business name is long, the next, shorter wording is used instead (see firstThatFits).
 export const DEFAULT_TEMPLATES = {
-  missed_call: "Hi, it's {business}. Sorry we missed your call, we're probably on a job. What do you need help with? Reply here and we'll call you back shortly.",
-  missed_call_after_hours: "Hi, it's {business}. Sorry we missed you, we're closed right now. What do you need help with? Reply here and we'll get back to you first thing.",
-  review: "Hi {name}, it's {sender}. {thanks} If you're happy with how it went, would you mind leaving us a quick Google review? It really helps a small business like ours: {link}",
-  review_followup: "Hi {name}, it's {sender} again. If you get a minute, a quick Google review would mean a lot to us: {link} Reply STOP to opt out",
-  review_reask: "Hi {name}, it's {sender}. Thanks for giving us the chance to put things right. If you're happy now, a quick Google review would mean a lot: {link}",
-  review_last: "Hi {name}, last nudge from {sender}, promise! If you were happy with {jobthe}, a quick Google review really helps a small business like ours: {link} Reply STOP to opt out",
-  review_later: "Hi {name}, it's {sender}. Hope everything's still good since we did {jobthe}. If you ever have a minute, a quick Google review would really help us: {link} Reply STOP to opt out",
+  missed_call: "Hi, it's {business}. Sorry we missed your call, we're probably on a job. What do you need? Reply here and we'll call you back shortly.",
+  missed_call_after_hours: "Hi, it's {business}. Sorry we missed you, we're closed right now. What do you need? Reply here and we'll get back to you first thing.",
+  review: "Hi {name}, it's {sender}. Thanks for choosing us for the {job}! Mind leaving a quick Google review? {link}",
+  review_followup: "Hi {name}, {sender} again. A quick Google review would mean a lot: {link} Reply STOP to opt out",
+  review_reask: "Hi {name}, it's {sender}. Thanks for letting us put it right. If you're happy now, a quick review would mean a lot: {link}",
+  review_last: "Hi {name}, {sender} here, last nudge I promise! A quick review really helps us: {link} Reply STOP to opt out",
+  review_later: "Hi {name}, it's {sender}. Hope the {job} is still good! A quick review would really help: {link} Reply STOP to opt out",
 };
 
 /** After-hours text for clients who do emergency call-outs (set from the onboarding form). */
 export const EMERGENCY_AFTER_HOURS = {
-  GB: "Hi, it's {business}. Sorry we missed you, we're closed right now. Reply with what you need and we'll get back to you first thing. If it's an emergency, reply URGENT.",
-  US: "Hi, it's {business}. Sorry we missed you, we're closed right now. Reply with what you need and we'll get back to you first thing. If it's an emergency, reply URGENT. Reply STOP to opt out",
+  GB: "Hi, it's {business}. Sorry we missed you, we're closed. Reply with what you need and we'll be in touch first thing. Emergency? Reply URGENT.",
+  US: "Hi, it's {business}. Sorry we missed you, we're closed. Reply with what you need, or URGENT if it's an emergency. Reply STOP to opt out",
 } as const;
+
+const STOP = " Reply STOP to opt out";
 
 /** US carriers expect opt-out wording in the first text a number sends to someone. */
 const US_TEMPLATES = {
-  missed_call: `${DEFAULT_TEMPLATES.missed_call} Reply STOP to opt out`,
-  missed_call_after_hours: `${DEFAULT_TEMPLATES.missed_call_after_hours} Reply STOP to opt out`,
-  review: `${DEFAULT_TEMPLATES.review} Reply STOP to opt out`,
+  missed_call: "Hi, it's {business}. Sorry we missed your call, we're on a job. Reply with what you need and we'll call you back." + STOP,
+  missed_call_after_hours: "Hi, it's {business}. Sorry we missed you, we're closed. Reply with what you need and we'll get back to you first thing." + STOP,
+  review: DEFAULT_TEMPLATES.review + STOP,
   review_followup: DEFAULT_TEMPLATES.review_followup,
-  review_reask: `${DEFAULT_TEMPLATES.review_reask} Reply STOP to opt out`,
+  review_reask: DEFAULT_TEMPLATES.review_reask + STOP,
   review_last: DEFAULT_TEMPLATES.review_last,
   review_later: DEFAULT_TEMPLATES.review_later,
 };
+
+/** Shorter wordings tried in order when the default doesn't fit one segment. */
+const FALLBACKS: Record<"missed_call" | "missed_call_after_hours" | "review" | "review_followup" | "review_reask" | "review_last" | "review_later", string[]> = {
+  missed_call: ["Hi, it's {business}. Sorry we missed your call, we're on a job. Reply with what you need and we'll call you back.", "Sorry we missed your call at {business}! Reply with what you need and we'll call you back."],
+  missed_call_after_hours: ["Hi, it's {business}. Sorry we missed you, we're closed. Reply with what you need and we'll get back to you first thing.", "Sorry we missed you at {business}, we're closed. Reply with what you need and we'll get back to you."],
+  review: [
+    "Hi {name}, it's {sender}. Thanks for choosing us! Mind leaving a quick Google review? {link}",
+    "Hi {name}, it's {business}. Thanks for choosing us! Mind leaving a quick Google review? {link}",
+    "Hi {name}, thanks for choosing {business}! Please leave us a quick review: {link}",
+    "Thanks for choosing us! Please leave us a quick review: {link}",
+  ],
+  review_followup: ["Hi {name}, {business} again. A quick Google review would mean a lot: {link} Reply STOP to opt out", "A quick review would mean a lot: {link} Reply STOP to opt out"],
+  review_reask: ["Hi {name}, it's {business}. Thanks for letting us put it right. Happy now? A quick review would mean a lot: {link}", "Thanks for letting us put it right! A quick review would mean a lot: {link}"],
+  review_last: ["Hi {name}, {business} here, last nudge I promise! A quick review really helps: {link} Reply STOP to opt out", "Last nudge, promise! A quick review really helps: {link} Reply STOP to opt out"],
+  review_later: [
+    "Hi {name}, it's {sender}. Hope all's still good since we visited! A quick review would really help: {link} Reply STOP to opt out",
+    "Hi {name}, it's {business}. Hope all's still good! A quick review would really help: {link} Reply STOP to opt out",
+    "Hope all's still good! A quick review would really help us: {link} Reply STOP to opt out",
+  ],
+};
+
+/** Fills the default wording, falling back to shorter versions until it fits one segment. */
+function fillFitting(key: keyof typeof FALLBACKS, primary: string, vars: Record<string, string>, us: boolean) {
+  const stop = us && (key === "missed_call" || key === "missed_call_after_hours" || key === "review" || key === "review_reask");
+  const list = [primary, ...FALLBACKS[key].map((t) => (stop && !/reply stop/i.test(t) ? t + STOP : t))];
+  // A missing job makes "for the {job}" wordings read badly: skip them.
+  const usable = vars.job ? list : list.filter((t) => !t.includes("{job}"));
+  return firstThatFits(usable.map((t) => fill(t, vars)));
+}
 
 export const countryOf = (c: Pick<Client, "country">): Country => (c.country === "US" ? "US" : "GB");
 export const templatesFor = (c: Pick<Client, "country">) => (countryOf(c) === "US" ? US_TEMPLATES : DEFAULT_TEMPLATES);
@@ -181,8 +215,10 @@ export const reviewLink = (job: Pick<Job, "review_token">) => `${env.appUrl}/v/$
 export function missedCallText(c: Client, date = new Date()) {
   const open = isOpen(c, date);
   const t = templatesFor(c);
-  const template = open ? c.missed_call_template || t.missed_call : c.missed_call_after_hours_template || t.missed_call_after_hours;
-  return fill(template, { business: businessName(c) });
+  const custom = open ? c.missed_call_template : c.missed_call_after_hours_template;
+  if (custom) return toGsm(fill(custom, { business: businessName(c) }));
+  const key = open ? "missed_call" : "missed_call_after_hours";
+  return fillFitting(key, t[key], { business: businessName(c) }, countryOf(c) === "US");
 }
 
 /** "Paul from P.I.C Driveways", or just the business when we don't know who's sending. */
@@ -224,26 +260,21 @@ export function stepKind(c: Pick<Client, "review_settings">, step: number): "fir
 export function reviewText(c: Client, contact: Pick<Contact, "name">, job: Pick<Job, "review_token" | "job_label" | "source">, step: number) {
   const t = templatesFor(c);
   const kind = stepKind(c, step);
-  const template =
-    kind === "first"
-      ? job.source === "reask"
-        ? t.review_reask
-        : c.review_template || t.review
-      : kind === "later"
-        ? t.review_later
-        : kind === "last" && !c.review_followup_template
-          ? t.review_last
-          : c.review_followup_template || t.review_followup;
-  const label = job.job_label?.trim();
-  return fill(template, {
+  const label = job.job_label?.trim() ?? "";
+  const vars = {
     business: businessName(c),
     sender: senderLine(c),
     name: firstName(contact.name),
-    job: label || "the job",
+    job: label,
     jobthe: label ? `the ${label}` : "the job",
     thanks: label ? `Thanks for choosing us for the ${label}.` : "Thanks for choosing us.",
     link: reviewLink(job),
-  });
+  };
+  // The owner's own wording (set in admin) is used as written.
+  const custom = kind === "first" && job.source !== "reask" ? c.review_template : kind === "reminder" || kind === "last" ? c.review_followup_template : null;
+  if (custom) return toGsm(fill(custom, { ...vars, job: label || "the job" }));
+  const key = kind === "first" ? (job.source === "reask" ? "review_reask" : "review") : kind === "later" ? "review_later" : kind === "last" ? "review_last" : "review_followup";
+  return fillFitting(key, t[key], vars, countryOf(c) === "US");
 }
 
 /** Finds or creates the customer record. Fills in a name if we didn't have one. */
@@ -271,9 +302,11 @@ export async function upsertContact(clientId: string, phone: string, name?: stri
 
 /** Sends an SMS from the client's Twilio number and logs it. Never throws: failures are logged with the error. */
 export async function sendSms(p: { client: Client; to: string; body: string; kind: SmsKind; contactId?: string | null }) {
+  // Plain GSM characters only: one curly apostrophe or emoji would make Twilio bill up to 3 times as much.
+  p = { ...p, body: toGsm(p.body) };
   const { data: log } = await db()
     .from("sms_log")
-    .insert({ client_id: p.client.id, contact_id: p.contactId ?? null, to_number: p.to, body: p.body, kind: p.kind })
+    .insert({ client_id: p.client.id, contact_id: p.contactId ?? null, to_number: p.to, body: p.body, kind: p.kind, segments: segmentsOf(p.body) })
     .select("id")
     .single<{ id: string }>();
   try {

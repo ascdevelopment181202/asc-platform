@@ -1,5 +1,6 @@
 "use server";
 
+import { firstThatFits } from "@/lib/sms-text";
 import { cancelBookingReview } from "@/lib/review-autopilot";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/supabase";
@@ -61,7 +62,10 @@ export async function createAppointment(f: FormData) {
         to: contact.phone,
         kind: "manual",
         contactId: contact.id,
-        body: `Hi ${firstName(contact.name)}, you're booked in with ${clientLabel(c)} on ${whenLabel(c, starts.toISOString())}. Reply to this text if you need to change it.`,
+        body: firstThatFits([
+          `Hi ${firstName(contact.name)}, you're booked in with ${clientLabel(c)} on ${whenLabel(c, starts.toISOString())}. Reply to this text if you need to change it.`,
+          `You're booked with ${clientLabel(c)}: ${whenLabel(c, starts.toISOString())}. Reply to change it.`,
+        ]),
       });
     }
   }
@@ -96,7 +100,7 @@ export async function updateAppointment(f: FormData) {
     })
     .eq("id", appt.id);
   if (moved && contact && f.get("notify") === "on" && !contact.opted_out_at) {
-    await sendSms({ client: c, to: contact.phone, kind: "manual", contactId: contact.id, body: `Hi ${firstName(contact.name)}, your booking with ${clientLabel(c)} has moved to ${whenLabel(c, starts.toISOString())}. Reply if that doesn't work.` });
+    await sendSms({ client: c, to: contact.phone, kind: "manual", contactId: contact.id, body: firstThatFits([`Hi ${firstName(contact.name)}, your booking with ${clientLabel(c)} has moved to ${whenLabel(c, starts.toISOString())}. Reply if that doesn't work.`, `Your booking with ${clientLabel(c)} is now ${whenLabel(c, starts.toISOString())}. Reply if that doesn't work.`]) });
   }
   back(page, "ok", "Booking updated.");
 }
@@ -118,7 +122,7 @@ export async function cancelAppointment(f: FormData) {
   await db().from("appointments").update({ status: "cancelled" }).eq("id", appt.id);
   await cancelBookingReview(appt.id);
   if (contact && f.get("notify") === "on" && !contact.opted_out_at) {
-    await sendSms({ client: c, to: contact.phone, kind: "manual", contactId: contact.id, body: `Hi ${firstName(contact.name)}, your booking with ${clientLabel(c)} on ${whenLabel(c, appt.starts_at)} has been cancelled. Reply to rearrange.` });
+    await sendSms({ client: c, to: contact.phone, kind: "manual", contactId: contact.id, body: firstThatFits([`Hi ${firstName(contact.name)}, your booking with ${clientLabel(c)} on ${whenLabel(c, appt.starts_at)} has been cancelled. Reply to rearrange.`, `Your ${clientLabel(c)} booking on ${whenLabel(c, appt.starts_at)} is cancelled. Reply to rearrange.`]) });
   }
   back(page, "ok", "Booking cancelled.");
 }

@@ -1,5 +1,6 @@
 "use server";
 
+import { firstThatFits } from "@/lib/sms-text";
 import { redirect } from "next/navigation";
 import { after } from "next/server";
 import { db, type Client } from "@/lib/supabase";
@@ -54,7 +55,7 @@ export async function bookSlot(f: FormData) {
   after(async () => {
     await notifyClient(c.id, { title: `New booking: ${name}`, body: `${when}${what ? ` · ${what.slice(0, 80)}` : ""}`, url: `/m/${c.dashboard_token}/c/${contact.id}`, tag: contact.id });
     if (!contact.opted_out_at) {
-      await sendSms({ client: c, to: phone, kind: "manual", contactId: contact.id, body: `Hi ${name.split(/\s+/)[0]}, you're booked in with ${clientLabel(c)} on ${when}. Reply to this text if you need to change it.` });
+      await sendSms({ client: c, to: phone, kind: "manual", contactId: contact.id, body: firstThatFits([`Hi ${name.split(/\s+/)[0]}, you're booked in with ${clientLabel(c)} on ${when}. Reply to this text if you need to change it.`, `You're booked with ${clientLabel(c)}: ${when}. Reply to change it.`]) });
     }
   });
   redirect(`/b/${token}?done=1&when=${encodeURIComponent(when)}`);

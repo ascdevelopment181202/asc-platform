@@ -16,7 +16,8 @@ import type { Site } from "@/lib/sites";
 import { env } from "@/lib/env";
 import { btn, btnQuiet, Countdown, fmt, input, StatusPill } from "../../ui";
 import { resendPhoneWelcome, saveSmsSettings, sendTestText, setUpPhone } from "../../sms-actions";
-import { countryOf, EMERGENCY_AFTER_HOURS, firstSendLabel, reviewSettings, scheduleSummary, TEMPLATE_HELP, templatesFor } from "@/lib/sms";
+import { countryOf, EMERGENCY_AFTER_HOURS, fill, firstSendLabel, reviewSettings, scheduleSummary, TEMPLATE_HELP, templatesFor } from "@/lib/sms";
+import { segmentsOf, toGsm } from "@/lib/sms-text";
 import { displayUk, forwardingCodes } from "@/lib/phone";
 import { a2pStatus } from "@/lib/twilio";
 import { saveAutopilot, saveBranding, saveCompetitor, saveReviewLocation } from "../../brand-actions";
@@ -657,7 +658,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
               </fieldset>
               <details>
                 <summary className="cursor-pointer text-neutral-600">Text templates (leave blank for the defaults)</summary>
-                <p className="mt-1 text-xs text-neutral-500">{TEMPLATE_HELP}</p>
+                <p className="mt-1 text-xs text-neutral-500">{TEMPLATE_HELP} The defaults are written to fit one text (160 characters) and switch to shorter wording when names are long. Your own wording is sent as written, so keep it under 160 with the link (about 38 characters).</p>
                 {([
                   ["missed_call_template", "Missed call, open", templatesFor(c).missed_call],
                   ["missed_call_after_hours_template", "Missed call, closed", templatesFor(c).missed_call_after_hours],
@@ -667,6 +668,11 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
                   <label key={name} className="mt-2 block text-xs">
                     {label}
                     <textarea name={name} rows={3} defaultValue={c[name] ?? ""} placeholder={placeholder} className={`${input} mt-1 w-full`} />
+                    {c[name] && (() => {
+                      const sample = toGsm(fill(c[name]!, { business: clientLabel(c), sender: `${c.sender_name || c.first_name || "Paul"} from ${clientLabel(c)}`, name: "Sarah", job: "boiler service", thanks: "Thanks for choosing us for the boiler service.", jobthe: "the boiler service", link: `${env.appUrl}/v/abc123abc123` }));
+                      const n = segmentsOf(sample);
+                      return <span className={`mt-0.5 block ${n > 1 ? "text-amber-700" : "text-green-700"}`}>{n > 1 ? `Costs ${n} texts each time (${sample.length} characters). The default fits in 1; clear this box to use it.` : `Fits in 1 text (${sample.length}/160).`}</span>;
+                    })()}
                   </label>
                 ))}
                 <p className="mt-2 text-xs text-neutral-500">
@@ -674,7 +680,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
                 </p>
               </details>
               <label className="flex items-center gap-2">
-                <input type="checkbox" name="forward_replies" defaultChecked={c.forward_replies} /> Also text new customer messages to the owner&apos;s phone
+                <input type="checkbox" name="forward_replies" defaultChecked={c.forward_replies} /> Also text new customer messages to the owner&apos;s phone, only while notifications aren&apos;t switched on (texts cost, notifications are free)
               </label>
               <label className="flex items-center gap-2">
                 <input type="checkbox" name="sms_enabled" defaultChecked={c.sms_enabled} disabled={!c.twilio_number} /> Texts switched on{!c.twilio_number && " (switches on when you set up their phone)"}

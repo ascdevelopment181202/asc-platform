@@ -1,4 +1,5 @@
 import { env } from "@/lib/env";
+import { firstThatFits } from "@/lib/sms-text";
 import { db, type Client } from "@/lib/supabase";
 import { clientLabel, once } from "@/lib/clients";
 import { notifyAdmin } from "@/lib/email";
@@ -169,7 +170,10 @@ export async function GET(request: Request) {
       to: contact.phone,
       kind: "manual",
       contactId: contact.id,
-      body: `Reminder: ${clientLabel(c)} is booked to see you ${whenLabel(c, a.starts_at)}. Reply to this text if anything has changed.`,
+      body: firstThatFits([
+        `Reminder: ${clientLabel(c)} is booked to see you ${whenLabel(c, a.starts_at)}. Reply to this text if anything has changed.`,
+        `Reminder: ${clientLabel(c)} is booked for ${whenLabel(c, a.starts_at)}. Reply if anything's changed.`,
+      ]),
     });
     (r.ok ? sent : skipped).push(`reminder ${clientLabel(c)}${r.ok ? "" : `: ${r.error}`}`);
   }
@@ -267,7 +271,8 @@ export async function GET(request: Request) {
       if (count) await notifyClient(c.id, msg);
       else if (c.owner_mobile && c.country !== "US") {
         // No notifications on their phone: a text to the owner instead (US waits for texting registration).
-        await sendSms({ client: c, to: c.owner_mobile, kind: "owner_confirm", body: `${msg.title} ${msg.body.replace("Tap", "Open your app")} ${app}${msg.url.replace(`/m/${c.dashboard_token}`, "")}` });
+        const link = `${app}${msg.url.replace(`/m/${c.dashboard_token}`, "")}`;
+        await sendSms({ client: c, to: c.owner_mobile, kind: "owner_confirm", body: firstThatFits([`${msg.title} ${msg.body.replace("Tap", "Open your app")} ${link}`, `${msg.title} Ask them for reviews here: ${link}`, `Ask today's customers for reviews: ${link}`]) });
       }
     }).catch((err) => skipped.push(`review nudge ${clientLabel(c)}: ${err instanceof Error ? err.message : err}`));
   }
