@@ -202,7 +202,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
               ["Campaign description", `${clientLabel(c)} texts back customers whose calls were missed, replies to customer messages about quotes and jobs, and asks customers for a review after a completed job. No marketing.`],
               ["Sample message 1", fill(t.missed_call)],
               ["Sample message 2", fill(t.review)],
-              ["How customers opt in", `Customers call or text ${clientLabel(c)}'s business number. If the call is missed, the customer receives one text reply. Customers who have a completed job receive a review request. Terms are published at ${legal}/terms.`],
+              ["How customers opt in", `Customers call or text the business number of ${clientLabel(c)}. If the call is missed, the customer receives one text reply. Customers who have a completed job receive a review request. Terms are published at ${legal}/terms.`],
               ["Privacy policy URL", `${legal}/privacy`],
               ["Terms URL", `${legal}/terms`],
               ["Opt-out / help keywords", "STOP, HELP (handled automatically by Twilio)"],
@@ -499,7 +499,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
               <form action={setUpPhone} className="mb-3 rounded-lg bg-blue-50 p-3 text-sm">
                 <input type="hidden" name="clientId" value={c.id} />
                 <p className="mb-2">
-                  One click: buys a {c.country === "US" ? "US local number near them (about $1.15/month) with its own Messaging Service" : "UK mobile number (about £1.89/month)"}, points it at the app, switches texts on, and texts and emails {c.owner_mobile ? displayUk(c.owner_mobile) : "the owner"} their app link and forwarding codes.
+                  One click: buys a {c.country === "US" ? "US local number near them (about $1.15/month) with its own Messaging Service" : "UK mobile number (about £1.89/month)"}, points it at the app, switches texts on, and {c.country === "US" ? "emails" : "texts and emails"} {c.owner_mobile ? displayUk(c.owner_mobile) : "the owner"} their app link and forwarding codes{c.country === "US" ? " (email only until their US texting registration is approved)" : ""}.
                 </p>
                 <label className="mb-2 flex items-center gap-2">
                   <input type="checkbox" name="quiet" /> Don&apos;t notify the client yet (buy and connect the number only)
