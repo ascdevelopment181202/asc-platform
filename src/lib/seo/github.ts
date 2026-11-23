@@ -1,5 +1,8 @@
 import "server-only";
 import { seoEnv } from "@/lib/env";
+import { siteFilesProblem } from "./repo-check";
+
+export { siteFilesProblem };
 
 const API = "https://api.github.com";
 
@@ -30,6 +33,14 @@ export async function repoInfo(repo: string): Promise<{ defaultBranch: string; p
 export async function tree(repo: string, ref: string): Promise<TreeFile[]> {
   const r = await gh<{ tree: TreeFile[] }>(`/repos/${repo}/git/trees/${encodeURIComponent(ref)}?recursive=1`);
   return r.tree.filter((f) => f.type === "blob" && !/^(node_modules|\.next|dist|build|\.git)\//.test(f.path));
+}
+
+/** Checks the token can write to the repo and that the repo holds the site. */
+export async function checkSiteRepo(repo: string): Promise<{ ok: boolean; error?: string }> {
+  const info = await repoInfo(repo);
+  if (!info.push) return { ok: false, error: "The token can read this repo but can't write to it." };
+  const problem = siteFilesProblem(await tree(repo, info.defaultBranch));
+  return problem ? { ok: false, error: problem } : { ok: true };
 }
 
 export async function readFile(repo: string, path: string, ref: string): Promise<{ content: string; sha: string } | null> {

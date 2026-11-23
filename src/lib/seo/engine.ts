@@ -22,7 +22,7 @@ import { readProfile, reviewFindings } from "./profile";
 import { monthResults, realEnquiryRate } from "./results";
 import { getLatest, getSettings, globalPaused, listActions, mondayOf, patchState, putLatest, putMetric, todayLondon, updateAction, upsertFindings, weeklyMetrics } from "./store";
 import { googleUpdates, holidayFindings, researchPlaybook, seasonalFindings, trackRecord, weatherFindings, writePlan, writeWeeklyReview, type StrategyContext } from "./strategist";
-import { repoInfo } from "./github";
+import { checkSiteRepo } from "./github";
 import { valueOf } from "./value";
 
 const DAY = 86_400_000;
@@ -156,11 +156,14 @@ export async function runClient(clientId: string, mode: Mode = "daily", deadline
 
   if (cfg.siteType === "vercel" && cfg.githubRepo && seoEnv.githubToken() && weekly) await step("Checking GitHub access", async () => {
     try {
-      const info = await repoInfo(cfg.githubRepo!);
-      state.github = info.push ? { ok: true, at: new Date().toISOString() } : { ok: false, at: new Date().toISOString(), error: "The token can read this repo but can't write to it." };
+      const check = await checkSiteRepo(cfg.githubRepo!);
+      state.github = { ...check, at: new Date().toISOString() };
     } catch (err) {
       state.github = { ok: false, at: new Date().toISOString(), error: err instanceof Error ? err.message : String(err) };
     }
+    // A repo that doesn't hold the site means every approved fix lands somewhere the live site never reads.
+    const broken = state.github?.ok === false && state.github.error && !/can't write|token/i.test(state.github.error);
+    await raise(broken ? [alert(cfg, "repo_no_site", `${cfg.githubRepo} doesn't hold ${cfg.domain}'s website files.`, `${state.github!.error} Site fixes are on hold until it does.`, [`Open github.com/${cfg.githubRepo}.`, "Upload the site's index.html (and any other files) to the top of the repo, not a zip.", "Check the site's Vercel project is connected to this repo (Settings, Git).", "Press Run now on this client to check again."])] : [], ["repo_no_site"]);
   });
 
   // 2. Read the site the way a crawler does. Full crawl weekly, home page only on other days.
