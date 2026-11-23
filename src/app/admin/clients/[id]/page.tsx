@@ -9,7 +9,7 @@ import { completeTask, markLive, resendWelcome, saveNotes } from "../../actions"
 import { generateSiteAction, saveDomain, saveGoogleSettings, saveReportNote, sendReportNow, setPublished, writeSeoPagesAction } from "../../site-actions";
 import { dashboardUrl, lastThirtyDays, rankLine, REPORT_DAYS, reportStats } from "@/lib/reports";
 import { googleAccount, listBusinessLocations, listSearchConsoleSites, type GbpLocation } from "@/lib/google";
-import { googleEnabled } from "@/lib/env";
+import { googleEnabled, seoEnv } from "@/lib/env";
 import { allPaths } from "@/lib/seo-pages";
 import { seoAiEnabled } from "@/lib/seo-ai";
 import type { Site } from "@/lib/sites";
@@ -120,6 +120,11 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
         <div className="mt-2 flex flex-wrap items-center gap-3">
           <h1 className="text-2xl font-semibold">{clientLabel(c)}</h1>
           <StatusPill status={c.status} />
+          {seoEnv.on() && (
+            <Link href={`/admin/seo/${c.id}`} className={btnQuiet}>
+              SEO autopilot
+            </Link>
+          )}
         </div>
         <p className="mt-1 text-sm text-neutral-600">
           {c.full_name ?? "No name"} · {c.email} · {c.phone ?? "no phone"}

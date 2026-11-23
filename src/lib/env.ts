@@ -60,3 +60,25 @@ export const env = {
 export const ASSETS_BUCKET = "client-assets";
 
 export const googleEnabled = () => !!process.env.GOOGLE_CLIENT_ID && !!process.env.GOOGLE_CLIENT_SECRET;
+
+const opt = (name: string) => process.env[name]?.trim() || null;
+
+/** SEO autopilot (admin only). Every key is optional: a missing one shows "Not connected" and the rest still works. */
+export const seoEnv = {
+  /** The whole feature is dark unless SEO_AUTOPILOT=1. */
+  on: () => process.env.SEO_AUTOPILOT === "1",
+  anthropicKey: () => opt("ANTHROPIC_API_KEY"),
+  googleKey: () => opt("GOOGLE_API_KEY"),
+  geminiKey: () => opt("GEMINI_API_KEY"),
+  openaiKey: () => opt("OPENAI_API_KEY"),
+  perplexityKey: () => opt("PERPLEXITY_API_KEY"),
+  dataForSeo: () => (opt("DATAFORSEO_LOGIN") && opt("DATAFORSEO_PASSWORD") ? { login: opt("DATAFORSEO_LOGIN")!, password: opt("DATAFORSEO_PASSWORD")! } : null),
+  githubToken: () => opt("GITHUB_TOKEN"),
+  vercelToken: () => opt("VERCEL_TOKEN"),
+  bingKey: () => opt("BING_WEBMASTER_API_KEY"),
+  indexNowKey: () => opt("INDEXNOW_KEY"),
+  encryptionKey: () => opt("SEO_ENCRYPTION_KEY"),
+  /** Hard stop on AI spend across every client, in pounds a month. */
+  aiMonthlyCapGbp: () => Number(process.env.SEO_AI_MONTHLY_CAP_GBP) || 30,
+  appUrl: () => (process.env.APP_URL ?? "").replace(/\/$/, ""),
+};
