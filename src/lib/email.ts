@@ -62,7 +62,7 @@ export const signoff = () => `Any questions, call or text me on ${env.contactPho
 
 export function welcomeEmail(p: { firstName: string; formLink: string }) {
   return {
-    subject: "You're in. Here's what happens next",
+    subject: "Information needed for your onboarding - ASC Development",
     text: `Hi ${p.firstName},
 
 Thanks for signing up with ASC Development. We'll have your new website, Google Business Profile and local SEO live within 48 hours of getting your details.
