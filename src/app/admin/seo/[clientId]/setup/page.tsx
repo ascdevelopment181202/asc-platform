@@ -55,25 +55,25 @@ async function StepSite({ c, cfg }: { c: Client; cfg: Awaited<ReturnType<typeof 
   const type = cfg.siteType ?? (site && (!domain || site.domain === domain) ? "hosted" : "vercel");
   const repo = cfg.githubRepo ?? (domain && type === "vercel" ? await repoForVercelDomain(domain) : null) ?? "";
   return (
-    <form action={saveSite} className={`${card} space-y-4 p-5`}>
+    <form action={saveSite} className={`${card} group space-y-4 p-5`}>
       <input type="hidden" name="clientId" value={c.id} /><input type="hidden" name="back" value={`/admin/seo/${c.id}/setup?step=1`} />
       {site && <input type="hidden" name="siteId" value={site.id} />}
       <label className={label}>Website address<input name="domain" defaultValue={domain} placeholder="picdriveways.com" required className={field} /></label>
       <fieldset className="space-y-2">
         <legend className={label}>How is the site built?</legend>
-        {([["vercel", "Its own Vercel project", "A Claude Design site on the client's domain. Fixes go to its GitHub repo as pull requests, with a preview, and go live when you approve."], ["hosted", "Hosted on the ASC platform", "The platform renders it, so changes apply directly."], ["wordpress", "WordPress", "Content publishes through an application password."], ["other", "Something else (Shopify, Wix...)", "Fixes come as a short change list to paste or send on."]] as const).map(([v, l, d]) => (
+        {([["vercel", "Its own Vercel project", "A Claude Design site on Vercel, on the client's domain (wherever the domain was bought, such as GoDaddy). Fixes go to its GitHub repo as pull requests, with a preview, and go live when you approve."], ["hosted", "Hosted on the ASC platform", "The platform renders it, so changes apply directly."], ["wordpress", "WordPress", "Content publishes through an application password."], ["other", "Something else (Shopify, Wix...)", "Fixes come as a short change list to paste or send on."]] as const).map(([v, l, d]) => (
           <label key={v} className="flex items-start gap-2 rounded-lg border border-neutral-200 p-3 text-sm"><input type="radio" name="siteType" value={v} defaultChecked={type === v} className="mt-1" /><span><span className="font-medium">{l}</span><span className="block text-xs text-neutral-500">{d}</span></span></label>
         ))}
       </fieldset>
-      <label className={label}>GitHub repo, for a Vercel project site (owner/name)<input name="githubRepo" defaultValue={repo} placeholder="ascdevelopment181202/picdrivway" className={field} /><span className="mt-1 block font-normal text-neutral-500">{seoEnv.vercelToken() ? "Found from the Vercel project when it's linked to GitHub." : "Type it in. With VERCEL_TOKEN added this is found for you."} Not linked yet? In the site&apos;s Vercel project: Settings, Git, Connect Git Repository.{!seoEnv.githubToken() && " GITHUB_TOKEN is not added yet, so until it is, fixes arrive as change lists."}</span></label>
-      <details className="rounded-lg border border-neutral-200 p-3 text-sm">
-        <summary className="cursor-pointer font-medium">WordPress details</summary>
+      <label className={`${label} hidden group-has-[input[value=vercel]:checked]:block`}>GitHub repo, for a Vercel project site (owner/name)<input name="githubRepo" defaultValue={repo} placeholder="ascdevelopment181202/picdrivway" className={field} /><span className="mt-1 block font-normal text-neutral-500">{seoEnv.vercelToken() ? "Found from the Vercel project when it's linked to GitHub." : "Type it in. With VERCEL_TOKEN added this is found for you."} Not linked yet? In the site&apos;s Vercel project: Settings, Git, Connect Git Repository.{!seoEnv.githubToken() && " GITHUB_TOKEN is not added yet, so until it is, fixes arrive as change lists."}</span></label>
+      <div className="hidden rounded-lg border border-neutral-200 p-3 text-sm group-has-[input[value=wordpress]:checked]:block">
+        <p className="font-medium">WordPress details</p>
         <div className="mt-3 grid gap-3 sm:grid-cols-3">
           <label className={label}>Site address<input name="wpUrl" defaultValue={cfg.wpUrl ?? ""} className={field} /></label>
           <label className={label}>Username<input name="wpUser" defaultValue={cfg.wpUser ?? ""} className={field} /></label>
           <label className={label}>Application password<input name="wpPassword" type="password" autoComplete="new-password" className={field} /></label>
         </div>
-      </details>
+      </div>
       <button className={btn}>Next: Google</button>
     </form>
   );
