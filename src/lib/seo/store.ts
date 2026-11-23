@@ -116,7 +116,7 @@ export const goalFor = (plan: Plan, type: ActionType) => plan.goals.find((g) => 
  * - a dismissed row stays quiet for 30 days, an applied one for 60
  * - open rows in `group` that are no longer detected are closed as resolved
  */
-export async function upsertFindings(clientId: string, findings: Finding[], cfg: SeoConfig, group: string[] = []): Promise<{ added: number; resolved: number }> {
+export async function upsertFindings(clientId: string, findings: Finding[], cfg: SeoConfig, group: string[] = [], boost: Record<string, number> = {}): Promise<{ added: number; resolved: number }> {
   const { data: rows } = await db().from("seo_actions").select("id, kind, dedupe_key, status, updated_at, snoozed_until, applied_at, draft, apply, dismissed_reason").eq("client_id", clientId).returns<Pick<SeoAction, "id" | "kind" | "dedupe_key" | "status" | "updated_at" | "snoozed_until" | "applied_at" | "draft" | "apply" | "dismissed_reason">[]>();
   const existing = new Map((rows ?? []).map((r) => [r.dedupe_key, r]));
   const { plan } = await currentPlan(clientId, cfg);
@@ -131,7 +131,7 @@ export async function upsertFindings(clientId: string, findings: Finding[], cfg:
     if (seen.has(f.dedupe)) continue;
     seen.add(f.dedupe);
     const goal = goalFor(plan, f.type);
-    const score = scoreOf(f.type, f.detail, { servesGoal: !!goal, penalty: Math.max(0.4, Math.pow(0.8, disliked.get(f.kind) ?? 0)) });
+    const score = scoreOf(f.type, f.detail, { servesGoal: !!goal, penalty: Math.max(0.4, Math.pow(0.8, disliked.get(f.kind) ?? 0)) * (boost[f.kind] ?? 1) });
     const fresh = { kind: f.kind, type: f.type, summary: f.summary, detail: f.detail, score, goal, updated_at: new Date().toISOString() };
     const old = existing.get(f.dedupe);
     if (!old) {

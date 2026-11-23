@@ -12,7 +12,7 @@ export const maxDuration = 300;
 /**
  * Runs hourly (see vercel.json) and does nothing unless SEO_AUTOPILOT=1.
  * From 5am UK time it works through each enabled client once a day, a few at a time,
- * carrying any it didn't reach into the next hour. Clients are claimed in the database,
+ * carrying any it didn't reach into the next hour. A client that has never run is picked up at any hour. Clients are claimed in the database,
  * so two runs never work on the same client. At 8am it sends the morning email.
  */
 export async function GET(request: Request) {
@@ -25,9 +25,10 @@ export async function GET(request: Request) {
   const log: string[] = [];
 
   try {
-    if (hour >= 5) {
+    // Daily runs start at 5am. A client that has never run gets its first audit on the next tick, whatever the hour.
+    {
       while (left() > 90_000) {
-        const { data: ids, error } = await db().rpc("claim_seo_runs", { p_today: todayLondon(), p_limit: 1 });
+        const { data: ids, error } = await db().rpc("claim_seo_runs", { p_today: todayLondon(), p_limit: 1, p_first_only: hour < 5 });
         if (error) {
           log.push(`claim failed: ${error.message}`);
           break;
@@ -35,7 +36,7 @@ export async function GET(request: Request) {
         const id = (ids as string[] | null)?.[0];
         if (!id) break;
         try {
-          const out = await runClient(id, "daily");
+          const out = await runClient(id, "daily", started + 215_000);
           log.push(`${id}: ${out.join("; ") || "ok"}`);
         } catch (err) {
           log.push(`${id} failed: ${err instanceof Error ? err.message : String(err)}`);

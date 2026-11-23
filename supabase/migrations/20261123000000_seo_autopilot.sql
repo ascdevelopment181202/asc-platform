@@ -171,7 +171,8 @@ $$;
 revoke execute on function public.track_seo_event(text, text, text, text) from public, anon, authenticated;
 
 -- Claims up to p_limit clients for today's run. A claim older than 20 minutes is treated as abandoned.
-create or replace function public.claim_seo_runs(p_today date, p_limit integer)
+-- p_first_only: only clients that have never run, so a new client's first audit doesn't wait for the morning.
+create or replace function public.claim_seo_runs(p_today date, p_limit integer, p_first_only boolean default false)
 returns setof uuid
 language sql
 security definer
@@ -180,7 +181,7 @@ as $$
   update seo_settings set run_claimed_at = now()
   where client_id in (
     select client_id from seo_settings
-    where enabled and (last_run_on is null or last_run_on < p_today)
+    where enabled and (last_run_on is null or (not p_first_only and last_run_on < p_today))
       and (run_claimed_at is null or run_claimed_at < now() - interval '20 minutes')
     order by last_run_on nulls first
     limit p_limit
@@ -188,4 +189,4 @@ as $$
   )
   returning client_id;
 $$;
-revoke execute on function public.claim_seo_runs(date, integer) from public, anon, authenticated;
+revoke execute on function public.claim_seo_runs(date, integer, boolean) from public, anon, authenticated;

@@ -17,11 +17,14 @@ export async function morningEmail(): Promise<string> {
   const alerts = open.filter((a) => a.detail.alert);
   await kvSet("morning_sent", today);
   await kvSet("morning_since", new Date().toISOString());
-  if (!fresh.length && !alerts.length) return "quiet day";
+  const { data: st } = await db().from("seo_settings").select("client_id, state").eq("enabled", true).returns<{ client_id: string; state: { gsc?: { ok: boolean }; gbp?: { ok: boolean } } }[]>();
+  const lost = (st ?? []).filter((x) => (x.state.gsc && !x.state.gsc.ok) || (x.state.gbp && !x.state.gbp.ok));
+  if (!fresh.length && !alerts.length && !lost.length) return "quiet day";
   const { data: clients } = await db().from("clients").select("id, business_name, full_name, email").returns<Pick<Client, "id" | "business_name" | "full_name" | "email">[]>();
   const name = new Map((clients ?? []).map((c) => [c.id, clientLabel(c)]));
   const minutes = Math.max(1, Math.round(fresh.reduce((n, a) => n + (a.draft?.target === "manual" ? (a.draft.minutes ?? 5) : 0.5), 0)));
   const lines = [
+    ...lost.map((x) => `**Disconnected:** ${name.get(x.client_id) ?? "A client"}'s ${x.state.gsc && !x.state.gsc.ok ? "Search Console" : "Business Profile"} has stopped answering. Open their SEO page for the fix.`),
     alerts.length ? `**${alerts.length} alert${alerts.length === 1 ? "" : "s"}:**` : "",
     ...alerts.slice(0, 5).map((a) => `- ${name.get(a.client_id) ?? "Client"}: ${a.summary}`),
     fresh.length ? `**${fresh.length} new SEO action${fresh.length === 1 ? "" : "s"}, about ${minutes} minute${minutes === 1 ? "" : "s"}:**` : "",

@@ -136,7 +136,7 @@ export async function runNow(f: FormData) {
   if (isDemo(clientId)) back(f, DEMO_MSG);
   await patchState(clientId, { progress: "Starting..." });
   after(async () => {
-    await runClient(clientId, "full").catch((err) => console.error("SEO run failed", clientId, err));
+    await runClient(clientId, "full", Date.now() + 270_000).catch((err) => console.error("SEO run failed", clientId, err));
   });
   back(f, "A full check has started. It takes a few minutes; refresh to see new items.");
 }
@@ -179,6 +179,7 @@ function planFrom(f: FormData, prior: SeoConfig): Partial<SeoConfig> {
     ignoreCompetitors: list(str(f, "ignoreCompetitors")),
     jobValueGbp: num("jobValueGbp"),
     enquiryRate: num("enquiryRatePct") ? num("enquiryRatePct")! / 100 : undefined,
+    closeRate: num("closeRatePct") ? num("closeRatePct")! / 100 : prior.closeRate,
     facts: { ...prior.facts, businessName: str(f, "businessName") || undefined, phone: str(f, "phone") || undefined, email: str(f, "email") || undefined, address: str(f, "address") || undefined, yearsTrading: str(f, "yearsTrading") || undefined, accreditations: list(str(f, "accreditations")), guarantees: str(f, "guarantees") || undefined, priceRanges: str(f, "priceRanges") || undefined, team: str(f, "team") || undefined, about: str(f, "about") || undefined, confirmed: f.get("confirmed") === "on" },
     profiles: Object.fromEntries(list(str(f, "profiles")).map((u) => {
       try {
@@ -197,7 +198,7 @@ export async function savePlanAndGo(f: FormData) {
   await saveConfig(clientId, planFrom(f, s.config), { enabled: true, setup_done_at: s.setup_done_at ?? new Date().toISOString() });
   await patchState(clientId, { progress: "Starting the first audit..." });
   after(async () => {
-    await runClient(clientId, "full").catch((err) => console.error("SEO first audit failed", clientId, err));
+    await runClient(clientId, "full", Date.now() + 270_000).catch((err) => console.error("SEO first audit failed", clientId, err));
   });
   redirect(`/admin/seo/${clientId}/setup?step=4`);
 }

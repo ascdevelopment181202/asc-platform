@@ -350,8 +350,14 @@ export function ActionCard({ a, clientName, country, demo, back, track, updates,
               <li key={i} className="flex items-center gap-2">
                 {i > 0 && <span className="text-neutral-400" aria-hidden>→</span>}
                 <span className={`rounded-lg border px-3 py-2 ${c.assumed ? "border-dashed border-neutral-300" : "border-neutral-200"}`}>
-                  <span className="block text-xs text-neutral-500">{c.label}{c.assumed ? " (estimate)" : ""}</span>
-                  <span className="font-medium">{c.value}</span>
+                  {c.value === "estimate" ? (
+                    <span className="font-medium">{c.label} (estimate)</span>
+                  ) : (
+                    <>
+                      <span className="block text-xs text-neutral-500">{c.label}{c.assumed ? " (estimate)" : ""}</span>
+                      <span className="font-medium">{c.value}</span>
+                    </>
+                  )}
                 </span>
               </li>
             ))}

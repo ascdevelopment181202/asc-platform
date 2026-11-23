@@ -13,7 +13,8 @@ import { AutoRefresh, CopyButton } from "../../client";
 import { card, Msg } from "../../ui";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+// "Run a full check" and the first audit carry on after the response, inside this limit.
+export const maxDuration = 300;
 
 const label = "block text-xs font-medium text-neutral-600";
 const field = `${input} mt-1 w-full`;

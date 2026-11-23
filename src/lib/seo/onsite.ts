@@ -25,6 +25,7 @@ export type PageAudit = {
   hasTracking: boolean;
   hasCta: boolean;
   hasReviews: boolean;
+  hasPrice: boolean;
   text: string; // first 600 characters of visible text
 };
 
@@ -105,6 +106,7 @@ export function parseHtml(url: string, html: string, status = 200): PageAudit {
     hasTracking: /seo-t\.js|\/api\/seo\/t|\/api\/track/.test(html),
     hasCta: /get a (free )?quote|free quote|call (us|now|today)|book (now|online|a)|request a|contact us|get in touch|enquir/i.test(text),
     hasReviews: /review|testimonial|★|⭐|rated \d|checkatrade|trustpilot/i.test(text),
+    hasPrice: /[£$]\s?\d/.test(text),
     text: text.slice(0, 600),
   };
 }
@@ -300,6 +302,7 @@ export function detectOnSite(cfg: SeoConfig, a: SiteAudit, opts: { monthlyClicks
   if (noAlt >= 3) out.push(tech(cfg, "alt_text", "Page", "alt_text", `Describe ${noAlt} images (alt text) with the service and town.`, `${noAlt} images have no description. Alt text helps Google Images and AI tools understand job photos, and is needed for accessibility.`, { clicks: Math.max(1, visits * 0.005) }, { confidence: "Low", draft: { target: "site", page: pages.find((p) => p.imgsNoAlt)?.path ?? "/", needsAi: true } }));
   const faq = pages.find((p) => p.faqHeadings >= 3 && !p.schemaTypes.includes("FAQPage"));
   if (faq) out.push(tech(cfg, "faq_schema", "AI search", `faq_schema:${faq.path}`, `Mark up the questions on the ${faq.path === "/" ? "home" : faq.path.replace(/^\//, "")} page as FAQs.`, `The page has ${faq.faqHeadings} question headings but no FAQ structured data, so Google and AI tools can't lift the answers cleanly.`, { clicks: Math.max(1, visits * 0.01) }, { autoOk: true, confidence: "Medium", draft: { target: "site", page: faq.path, needsAi: true } }));
+  if (cfg.facts?.confirmed && cfg.facts.priceRanges && !pages.some((p) => p.hasPrice)) out.push(tech(cfg, "quotable", "AI search", "quotable", "Add a short facts and prices block to the home page that AI answers can quote.", "The fact sheet has prices, but no page on the site shows one. AI tools quote pages that state plain facts: who the business is, what it does, where, what it costs and what backs it up.", { clicks: Math.max(1, visits * 0.02) }, { confidence: "Medium", draft: { target: "site", page: "/", needsAi: true }, assume: "Clear facts get quoted and clicked" }));
   const thin = pages.filter((p) => p.words < 150 && !p.noindex && !/contact|privacy|terms|thank|cookie/.test(p.path));
   if (thin.length) out.push(tech(cfg, "thin_pages", "Content", "thin_pages", `${thin.length} page${thin.length === 1 ? " is" : "s are"} too thin to rank.`, `Pages with under 150 words: ${thin.slice(0, 8).map((p) => `${p.path} (${p.words})`).join(", ")}.`, { clicks: Math.max(1, thin.length * 2) }, { confidence: "Low", draft: { target: "site", page: thin[0].path, needsAi: true } }));
   return out;

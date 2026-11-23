@@ -148,7 +148,7 @@ export type Speed = { score: number; lcp: number; cls: number; tbt: number };
 export async function pageSpeed(url: string): Promise<Speed | null> {
   try {
     const key = seoEnv.googleKey();
-    const res = await fetch(`https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url=${encodeURIComponent(url)}&strategy=mobile&category=performance${key ? `&key=${key}` : ""}`, { signal: AbortSignal.timeout(60_000) });
+    const res = await fetch(`https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url=${encodeURIComponent(url)}&strategy=mobile&category=performance${key ? `&key=${key}` : ""}`, { signal: AbortSignal.timeout(40_000) });
     if (!res.ok) return null;
     const j = (await res.json()) as { lighthouseResult?: { categories?: { performance?: { score?: number } }; audits?: Record<string, { numericValue?: number }> } };
     const a = j.lighthouseResult?.audits ?? {};

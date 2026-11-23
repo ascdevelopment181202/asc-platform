@@ -44,6 +44,7 @@ export type SeoConfig = {
   aiBudgetGbp?: number;
   jobValueGbp?: number;
   enquiryRate?: number; // 0.05 = 5 in 100 visitors enquire
+  closeRate?: number; // 0.33 = 1 in 3 enquiries becomes a job
   clientReport?: boolean;
   lat?: number;
   lng?: number;

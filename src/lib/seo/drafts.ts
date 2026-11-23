@@ -128,6 +128,14 @@ export async function draftFor(a: SeoAction, cfg: SeoConfig, c: Client): Promise
     return { target: "site", page, fields: [{ name: "title", label: "Title", before: live?.audit.title ?? "", after: j.title ?? live?.audit.title ?? "" }, { name: "description", label: "Description", before: live?.audit.description ?? "", after: j.description ?? live?.audit.description ?? "" }], html: bodyHtml({ sections: j.sections, faqs: j.faqs }, false), note: gapsNote(j) };
   }
 
+  if (a.kind === "quotable") {
+    const j = await claudeJson<{ heading: string; who: string; rows: { item: string; price: string }[]; facts: string[]; gaps?: string[] }>({ ...base, purpose: "quotable", model: MODELS.quick, maxTokens: 700, user: `${FACTS}\n\nWrite a short block for the home page that an AI assistant could quote word for word: a heading; one sentence saying who the business is, what it does and where; a price table built only from the prices in FACTS; and 3 to 5 one-line facts (years trading, accreditations, guarantee) taken only from FACTS.\n\n{"heading":"","who":"","rows":[{"item":"","price":""}],"facts":[""],"gaps":[]}` });
+    if (!j?.who) return null;
+    const updated = new Date().toLocaleDateString("en-GB", { month: "long", year: "numeric" });
+    const html = [`<section class="seo-facts">`, `<h2>${esc(j.heading || "At a glance")}</h2>`, `<p>${esc(j.who)}</p>`, j.rows?.length ? `<table><tbody>${j.rows.map((r) => `<tr><td>${esc(r.item)}</td><td>${esc(r.price)}</td></tr>`).join("")}</tbody></table>` : "", j.facts?.length ? `<ul>${j.facts.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : "", `<p><small>Last updated ${updated}</small></p>`, `</section>`].filter(Boolean).join("\n");
+    return { target: "site", page, html, note: gapsNote(j) };
+  }
+
   if (a.kind === "gbp_description") {
     const j = await claudeJson<{ description: string; gaps?: string[] }>({ ...base, purpose: "gbp-description", model: MODELS.quick, maxTokens: 500, user: `${FACTS}\n\nCurrent Business Profile description: ${a.draft?.fields?.[0]?.before || "(none)"}\n\nWrite the Google Business Profile description: 500 to 740 characters, what the business does, where, and what makes it a safe choice (only from FACTS). No phone numbers, links, prices or offers: Google doesn't allow them here.\n\n{"description":"","gaps":[]}` });
     if (!j?.description) return null;

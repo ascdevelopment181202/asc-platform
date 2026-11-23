@@ -19,11 +19,11 @@ test("click rate curve falls with position", () => {
 });
 
 test("value chain uses the client's own numbers when set and labels estimates when not", () => {
-  const own = valueOf({ clicks: 100 }, { ...cfg, jobValueGbp: 1000, enquiryRate: 0.1 });
-  assert.equal(Math.round(own.gbp), 10_000);
+  const own = valueOf({ clicks: 100 }, { ...cfg, jobValueGbp: 1000, enquiryRate: 0.1, closeRate: 0.5 });
+  assert.equal(Math.round(own.gbp), 5_000);
   assert.ok(own.chain.every((c) => !c.assumed));
   const guess = valueOf({ clicks: 100 }, cfg);
-  assert.equal(Math.round(guess.gbp), 100 * 0.05 * 4500);
+  assert.equal(Math.round(guess.gbp), Math.round(100 * 0.05 * 0.33 * 4500));
   assert.ok(guess.chain.some((c) => c.assumed));
 });
 

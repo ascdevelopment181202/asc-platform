@@ -14,7 +14,8 @@ import { AutoRefresh, CopyButton } from "../client";
 import { ActionCard, card, ConnStrip, Msg, Pill, Spark, Stat, Tabs } from "../ui";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+// "Run a full check" and the first audit carry on after the response, inside this limit.
+export const maxDuration = 300;
 
 const TABS = [
   { key: "overview", label: "Overview" },
@@ -408,7 +409,7 @@ function Results({ v, country }: { v: ClientView; country: "GB" | "US" }) {
           <tbody>{[...r].reverse().map((m) => <tr key={m.month} className="border-t border-neutral-100"><td className={td}>{new Date(`${m.month}-15`).toLocaleDateString("en-GB", { month: "short", year: "numeric" })}</td><td className={td}>{m.profileCalls}</td><td className={td}>{m.directions}</td><td className={td}>{m.profileWebsite}</td><td className={td}>{m.siteCalls}</td><td className={td}>{m.forms}</td><td className={td}>{m.enquiries}</td><td className={td}>{m.ascCalls}</td><td className={td}>{m.aiVisits}</td><td className={`${td} font-semibold`}>{leads(m)}</td></tr>)}</tbody>
         </table></div>
       </section>
-      <p className="text-xs text-neutral-500">Leads = calls from the Business Profile + call taps and forms on the website + enquiries through the platform. Calls to the ASC number are shown beside them, not added in, because many of those callers also tapped the profile or the site. Website and AI figures need the tracking script.{job ? ` At an average job of ${money(job, country)}, last month's ${r.length > 1 ? leads(r[r.length - 2]) : 0} leads were worth up to ${money((r.length > 1 ? leads(r[r.length - 2]) : 0) * job, country)}.` : ""}</p>
+      <p className="text-xs text-neutral-500">Leads = calls from the Business Profile + call taps and forms on the website + enquiries through the platform. Calls to the ASC number are shown beside them, not added in, because many of those callers also tapped the profile or the site. Website and AI figures need the tracking script.{job ? ` At an average job of ${money(job, country)}, last month's ${r.length > 1 ? leads(r[r.length - 2]) : 0} leads would be worth about ${money((r.length > 1 ? leads(r[r.length - 2]) : 0) * job * (v.settings.config.closeRate ?? 0.33), country)} if ${Math.round((v.settings.config.closeRate ?? 0.33) * 100)}% became jobs.` : ""}</p>
     </div>
   );
 }
@@ -479,6 +480,7 @@ function Settings({ v, back }: { v: ClientView; back: string }) {
           <label className={label}>Towns, one per line, most important first<textarea name="towns" rows={6} defaultValue={(c.towns ?? []).join("\n")} className={field} /></label>
           <label className={label}>Brand terms (searches that are just the business name)<input name="brandTerms" defaultValue={(c.brandTerms ?? []).join(", ")} className={field} /></label>
           <label className={label}>Competitors to ignore<input name="ignoreCompetitors" defaultValue={(c.ignoreCompetitors ?? []).join(", ")} className={field} /></label>
+          <label className={label}>Enquiries that become jobs (%), blank for 1 in 3<input name="closeRatePct" type="number" step="1" defaultValue={c.closeRate ? Math.round(c.closeRate * 100) : ""} className={field} /></label>
           <label className={label}>Enquiry rate (%), blank to use tracking<input name="enquiryRatePct" type="number" step="0.1" defaultValue={c.enquiryRate ? c.enquiryRate * 100 : ""} className={field} /></label>
           <label className={label}>Profiles elsewhere (Facebook, Checkatrade, Yell...), one address per line<textarea name="profiles" rows={3} defaultValue={Object.values(c.profiles ?? {}).join("\n")} className={field} /></label>
         </section>

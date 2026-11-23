@@ -86,7 +86,7 @@ export async function reviewFindings(c: Client, cfg: SeoConfig, competitors: Com
   const { data } = await db().from("google_reviews").select("id, rating, comment, reviewer_name, created_at, reply, auto_reply_at").eq("client_id", c.id).order("created_at", { ascending: false }).limit(200).returns<ReviewRow[]>();
   const reviews = data ?? [];
   const f: Finding[] = [];
-  for (const r of reviews.filter((r) => !r.reply && !r.auto_reply_at && Date.now() - Date.parse(r.created_at) < 60 * DAY).slice(0, 8)) {
+  for (const r of reviews.filter((r) => !r.reply && !r.auto_reply_at && Date.now() - Date.parse(r.created_at) < 60 * DAY).slice(0, 20)) {
     const bad = (r.rating ?? 5) <= 3;
     f.push(item(cfg, "review_reply", "Reviews", `review_reply:${r.id}`, `Reply to ${r.reviewer_name ?? "a customer"}'s ${r.rating ?? "?"}-star Google review.`, `${bad ? "A lower rating needs a calm, professional reply: future customers read how the business responds." : "Replying to reviews shows customers and Google the business is active."} Review: "${(r.comment ?? "(no comment)").slice(0, 240)}"`, { calls: bad ? 0.5 : 0.2 }, { confidence: "High", risk: bad ? "Medium" : "Low", draft: { target: "review", needsAi: true, fields: [{ name: "reply", label: "Reply", before: "", after: "" }], note: r.id }, assume: "Replies lift trust with the next reader" }));
   }

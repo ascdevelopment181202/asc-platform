@@ -32,6 +32,7 @@ export const TRADE_DEFAULTS: Record<string, { jobValue: number; label: string }>
 };
 const FALLBACK = { jobValue: 600, label: "trades businesses" };
 export const DEFAULT_ENQUIRY_RATE = 0.05;
+export const DEFAULT_CLOSE_RATE = 0.33;
 
 export function tradeKey(trade?: string): string {
   const t = (trade ?? "").toLowerCase();
@@ -72,10 +73,15 @@ export function valueOf(gain: { clicks?: number; calls?: number }, cfg: SeoConfi
     enquiries += gain.calls;
     chain.push({ label: "Extra calls a month", value: `+${gain.calls.toFixed(gain.calls < 10 ? 1 : 0)}` });
   }
-  const total = enquiries * jobValue;
+  // Not every enquiry becomes a job. One in three is a fair starting point for trades until the client's own rate is set.
+  const close = cfg.closeRate && cfg.closeRate > 0 ? Math.min(1, cfg.closeRate) : DEFAULT_CLOSE_RATE;
+  const closeAssumed = !(cfg.closeRate && cfg.closeRate > 0);
+  const jobs = enquiries * close;
+  chain.push({ label: closeAssumed ? "Enquiries that become jobs (typical)" : "Enquiries that become jobs (this client)", value: `${pct(close)} ≈ ${jobs.toFixed(1)} jobs`, assumed: closeAssumed });
+  const total = jobs * jobValue;
   chain.push({
     label: jobAssumed ? `Average job (typical for ${def.label})` : "Average job (from the fact sheet)",
-    value: `${money(jobValue, cfg.country)} ≈ ${money(total, cfg.country)} a month potential`,
+    value: `${money(jobValue, cfg.country)} ≈ ${money(total, cfg.country)} a month`,
     assumed: jobAssumed,
   });
   return { gbp: total, enquiries, chain };
