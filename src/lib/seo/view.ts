@@ -8,6 +8,7 @@ import { aiSpend } from "./ai";
 import { recentAiChecks } from "./aivis";
 import type { BingStats } from "./bing";
 import { citationCopy, citationRows, directoriesFor, type CitationRow, type Directory } from "./citations";
+import { reportUrl } from "./client-report";
 import { connectionsFor } from "./connections";
 import { demoActions, demoView, DEMO_ID } from "./demo";
 import type { PageSnapshot, PageSummary, QuerySnapshot } from "./engine";
@@ -48,6 +49,7 @@ export type ClientView = {
   score: number;
   rating: number | null;
   reviewCount: number | null;
+  reportUrl: string; // the client's private progress page
 };
 
 const PENALTY: Record<string, number> = { Technical: 4, Profile: 5, Page: 2, "AI search": 3, Content: 1, Reviews: 3, Manual: 1 };
@@ -125,6 +127,7 @@ export async function loadView(clientId: string): Promise<ClientView | null> {
     score: healthScore(actions, connections),
     rating: c.google_rating,
     reviewCount: c.google_review_count,
+    reportUrl: await reportUrl(clientId),
   };
 }
 

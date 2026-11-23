@@ -1,6 +1,7 @@
 // A sample client so every screen can be shown before real data builds up.
 // It lives only in memory: nothing here is written to the database or counted in any real figure.
 import "server-only";
+import { seoEnv } from "@/lib/env";
 import type { ActionType, AiCheck, Confidence, Draft, Effort, Evidence, Measured, SeoAction, SeoChange, SeoConfig, SeoSettings, WeekPoint } from "./types";
 import { citationCopy, directoriesFor } from "./citations";
 import { connectionsFor } from "./connections";
@@ -148,6 +149,7 @@ export function demoView(): ClientView {
     score: 74,
     rating: 4.7,
     reviewCount: 43,
+    reportUrl: `${seoEnv.appUrl()}/progress/demo`,
   };
 }
 
