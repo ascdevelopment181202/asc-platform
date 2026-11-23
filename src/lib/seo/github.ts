@@ -85,7 +85,11 @@ export type PrState = { open: boolean; merged: boolean; build: "pending" | "ok" 
 /** Where a pull request stands: open or merged, and whether Vercel's preview built. */
 export async function prState(repo: string, number: number): Promise<PrState> {
   const pr = await gh<{ state: string; merged: boolean; head: { sha: string } }>(`/repos/${repo}/pulls/${number}`);
-  const deployments = await gh<{ id: number; environment: string }[]>(`/repos/${repo}/deployments?sha=${pr.head.sha}&per_page=5`).catch(() => []);
+  const deployments = await gh<{ id: number; environment: string }[]>(`/repos/${repo}/deployments?sha=${pr.head.sha}&per_page=5`).catch((err: unknown) => {
+    // Without "Deployments: Read" on the token every preview looks unbuilt forever, so say so instead of waiting silently.
+    if (/403|not accessible/i.test(err instanceof Error ? err.message : String(err))) throw new Error("The GitHub token can't see preview builds. On GitHub, edit the token and set Deployments to Read-only, then press Approve again.");
+    return [];
+  });
   let build: PrState["build"] = "pending";
   let previewUrl: string | undefined;
   for (const d of deployments) {
