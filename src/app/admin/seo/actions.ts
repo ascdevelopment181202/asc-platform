@@ -95,14 +95,16 @@ export async function writeNow(f: FormData) {
   const s = a ? await getSettings(a.client_id) : null;
   const { data: c } = a ? await db().from("clients").select("*").eq("id", a.client_id).maybeSingle<Client>() : { data: null };
   if (!a || !s || !c) back(f, "That item no longer exists.");
+  // back() redirects by throwing, so it must stay outside the try or the catch swallows it.
+  let msg = "Written. Check it and approve.";
   try {
     const d = await draftFor(a, { ...s.config, country: s.config.country ?? c.country }, c);
-    if (!d) back(f, "The AI didn't return anything usable. Try again.");
-    await updateAction(id, { draft: d });
+    if (d) await updateAction(id, { draft: d });
+    else msg = "The AI's reply couldn't be read, even after a retry. Press Write it now once more; if it happens again, tell me.";
   } catch (err) {
-    back(f, err instanceof AiUnavailable ? err.message : `Couldn't write it: ${err instanceof Error ? err.message : err}`);
+    msg = err instanceof AiUnavailable ? err.message : `Couldn't write it: ${err instanceof Error ? err.message : err}`;
   }
-  back(f, "Written. Check it and approve.");
+  back(f, msg);
 }
 
 export async function refreshPr(f: FormData) {
