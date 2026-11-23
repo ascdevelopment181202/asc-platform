@@ -80,6 +80,8 @@ Handy to have ready:
 - The login for wherever your domain is registered, if you have one
 - Your Google Business Profile, so you can add us as a manager
 
+You agreed to our terms of service when you signed up. You can read them any time here: ${env.appUrl}/terms
+
 ${signoff()}`,
   };
 }
