@@ -354,7 +354,7 @@ export function ActionCard({ a, clientName, country, demo, back, track, updates,
                     <span className="font-medium">{c.label} (estimate)</span>
                   ) : (
                     <>
-                      <span className="block text-xs text-neutral-500">{c.label}{c.assumed ? " (estimate)" : ""}</span>
+                      <span className="block text-xs text-neutral-500">{c.label}{c.assumed && !/typical|estimate/i.test(c.label) ? " (estimate)" : ""}</span>
                       <span className="font-medium">{c.value}</span>
                     </>
                   )}

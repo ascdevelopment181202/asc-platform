@@ -67,7 +67,7 @@ export function valueOf(gain: { clicks?: number; calls?: number }, cfg: SeoConfi
     const clicks = Math.round(gain.clicks);
     chain.push({ label: "Extra clicks a month", value: `+${clicks}` });
     enquiries += gain.clicks * rate;
-    chain.push({ label: rateAssumed ? "Enquiry rate (typical, not this site's yet)" : "This site's enquiry rate", value: `${pct(rate)} ≈ ${(gain.clicks * rate).toFixed(1)} enquiries`, assumed: rateAssumed });
+    chain.push({ label: rateAssumed ? "Enquiry rate (typical, not this site's yet)" : "This site's enquiry rate", value: `${pct(rate)} ≈ ${gain.clicks * rate < 1 ? (gain.clicks * rate).toFixed(2) : (gain.clicks * rate).toFixed(1)} enquiries`, assumed: rateAssumed });
   }
   if (gain.calls) {
     enquiries += gain.calls;
@@ -77,7 +77,7 @@ export function valueOf(gain: { clicks?: number; calls?: number }, cfg: SeoConfi
   const close = cfg.closeRate && cfg.closeRate > 0 ? Math.min(1, cfg.closeRate) : DEFAULT_CLOSE_RATE;
   const closeAssumed = !(cfg.closeRate && cfg.closeRate > 0);
   const jobs = enquiries * close;
-  chain.push({ label: closeAssumed ? "Enquiries that become jobs (typical)" : "Enquiries that become jobs (this client)", value: `${pct(close)} ≈ ${jobs.toFixed(1)} jobs`, assumed: closeAssumed });
+  chain.push({ label: closeAssumed ? "Enquiries that become jobs (typical)" : "Enquiries that become jobs (this client)", value: `${pct(close)} ≈ ${jobs < 1 ? jobs.toFixed(2) : jobs.toFixed(1)} jobs`, assumed: closeAssumed });
   const total = jobs * jobValue;
   chain.push({
     label: jobAssumed ? `Average job (typical for ${def.label})` : "Average job (from the fact sheet)",

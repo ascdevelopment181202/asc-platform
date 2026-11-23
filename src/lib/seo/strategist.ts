@@ -232,7 +232,7 @@ export async function trackRecord(trade?: string): Promise<TrackRecord> {
   }
   const out: TrackRecord = {};
   for (const r of rows) {
-    if (r.result.verdict === "too early") continue;
+    if (!r.result?.verdict || r.result.verdict === "too early") continue;
     out[r.kind] ??= { worked: 0, total: 0 };
     out[r.kind].total++;
     if (r.result.verdict === "worked") out[r.kind].worked++;
