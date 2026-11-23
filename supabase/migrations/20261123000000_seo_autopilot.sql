@@ -8,7 +8,7 @@ create table if not exists public.seo_settings (
   paused boolean not null default false,        -- detectors still run, nothing is applied
   config jsonb not null default '{}'::jsonb,    -- site, connections, fact sheet, plan, auto-apply (see SeoConfig)
   state jsonb not null default '{}'::jsonb,     -- health, connection checks, baseline, last errors (see SeoState)
-  tracking_token text not null default encode(gen_random_bytes(8), 'hex'),
+  tracking_token text not null default substr(replace(gen_random_uuid()::text, '-', ''), 1, 16),
   run_claimed_at timestamptz,                   -- a run holds this while it works, so runs never overlap
   last_run_on date,
   last_weekly_on date,
