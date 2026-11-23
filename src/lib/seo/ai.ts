@@ -56,7 +56,7 @@ async function record(clientId: string | null, provider: string, model: string, 
 }
 
 export type Source = { title?: string; url: string };
-export type Answer = { text: string; sources: Source[] };
+export type Answer = { text: string; sources: Source[]; stop?: string };
 
 const noDash = (s: string) => s.replace(/\s*—\s*/g, ", ");
 
@@ -81,7 +81,7 @@ export async function claude(o: { clientId: string | null; purpose: string; mode
   });
   if (!res.ok) throw new Error(`Claude ${res.status}: ${(await res.text().catch(() => "")).slice(0, 300)}`);
   type Block = { type: string; text?: string; citations?: { url?: string; title?: string }[]; content?: { type?: string; url?: string; title?: string }[] };
-  const data = (await res.json()) as { content?: Block[]; usage?: { input_tokens?: number; output_tokens?: number; server_tool_use?: { web_search_requests?: number } } };
+  const data = (await res.json()) as { stop_reason?: string; content?: Block[]; usage?: { input_tokens?: number; output_tokens?: number; server_tool_use?: { web_search_requests?: number } } };
   const sources: Source[] = [];
   for (const b of data.content ?? []) {
     for (const c of b.citations ?? []) if (c.url) sources.push({ url: c.url, title: c.title });
@@ -89,13 +89,14 @@ export async function claude(o: { clientId: string | null; purpose: string; mode
   }
   await record(o.clientId, "anthropic", o.model, o.purpose, data.usage?.input_tokens ?? 0, data.usage?.output_tokens ?? 0, data.usage?.server_tool_use?.web_search_requests ?? 0);
   const text = noDash((data.content ?? []).filter((b) => b.type === "text").map((b) => b.text ?? "").join(""));
-  return { text, sources: dedupe(sources) };
+  return { text, sources: dedupe(sources), stop: data.stop_reason };
 }
 
 const dedupe = (s: Source[]) => [...new Map(s.map((x) => [x.url, x])).values()].slice(0, 12);
 
 /** Pulls the first JSON object or array out of a model reply. */
 export function parseJson<T>(text: string): T | null {
+  text = text.replace(/```(?:json)?/gi, "");
   const start = text.search(/[{[]/);
   if (start < 0) return null;
   const open = text[start];
@@ -109,8 +110,17 @@ export function parseJson<T>(text: string): T | null {
 }
 
 export async function claudeJson<T>(o: Parameters<typeof claude>[0]): Promise<T | null> {
-  const a = await claude({ ...o, system: `${o.system}\n\nReply with JSON only. No prose before or after. Never use em dashes.` });
-  return parseJson<T>(a.text);
+  const system = `${o.system}\n\nReply with JSON only. No prose before or after. Never use em dashes.`;
+  // Output is only billed for what's written, so give plenty of room: a reply cut off mid-JSON is useless.
+  let maxTokens = Math.max(o.maxTokens ?? 2000, 8000);
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const a = await claude({ ...o, system, maxTokens });
+    const parsed = parseJson<T>(a.text);
+    if (parsed) return parsed;
+    console.error(`AI reply unreadable (${o.purpose}, stop: ${a.stop ?? "?"}, ${a.text.length} chars): ${a.text.slice(0, 200)} ... ${a.text.slice(-200)}`);
+    if (a.stop === "max_tokens") maxTokens = Math.min(maxTokens * 2, 32000);
+  }
+  return null;
 }
 
 // ---------- Other AI tools, used only to check whether they name the client ----------
