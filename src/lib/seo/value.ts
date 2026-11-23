@@ -93,8 +93,9 @@ const EFFORT: Record<Effort, number> = { "1 click": 1, "5 min manual": 2, "30 mi
 export const TYPE_WEIGHT: Record<ActionType, number> = { Profile: 1.5, Reviews: 1.5, Technical: 1.3, Page: 1, "AI search": 1, Content: 0.7, Manual: 0.8 };
 
 /** Score = pounds x confidence / effort, weighted by type. Alerts always sort first. */
-export function scoreOf(type: ActionType, d: Pick<ActionDetail, "gain" | "confidence" | "effort" | "alert">, opts: { servesGoal?: boolean; penalty?: number } = {}): number {
+export function scoreOf(type: ActionType, d: Pick<ActionDetail, "gain" | "confidence" | "effort" | "alert" | "priority">, opts: { servesGoal?: boolean; penalty?: number } = {}): number {
   if (d.alert) return 1_000_000;
+  if (d.priority) return d.priority;
   const base = Math.max(d.gain.gbp ?? 0, 1);
   const s = (base * CONF[d.confidence] * TYPE_WEIGHT[type]) / EFFORT[d.effort];
   return Math.round(s * (opts.servesGoal === false ? 0.7 : 1) * (opts.penalty ?? 1) * 100) / 100;

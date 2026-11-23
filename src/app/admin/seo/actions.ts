@@ -6,11 +6,12 @@ import { redirect } from "next/navigation";
 import { db, type Client } from "@/lib/supabase";
 import { AiUnavailable } from "@/lib/seo/ai";
 import { approveAction, dismissAction, encrypt, markDone, progressPr, undoChange } from "@/lib/seo/apply";
+import { weeklyReportFinding } from "@/lib/seo/client-report";
 import { DEMO_ID } from "@/lib/seo/demo";
 import { draftFor } from "@/lib/seo/drafts";
 import { runClient } from "@/lib/seo/engine";
 import { repoForVercelDomain } from "@/lib/seo/github";
-import { ensureSettings, getAction, getSettings, kvGet, kvSet, listActions, patchState, saveConfig, updateAction } from "@/lib/seo/store";
+import { ensureSettings, getAction, getSettings, kvGet, kvSet, listActions, mondayOf, patchState, saveConfig, updateAction, upsertFindings } from "@/lib/seo/store";
 import { DEFAULT_PLAYBOOK } from "@/lib/seo/strategist";
 import { isSafe } from "@/lib/seo/safe";
 import type { SeoConfig, SiteType } from "@/lib/seo/types";
@@ -141,6 +142,23 @@ export async function runNow(f: FormData) {
   back(f, "A full check has started. It takes a few minutes; refresh to see new items.");
 }
 
+/** Drafts this week's progress email for a client straight away, without waiting for Monday's run. */
+export async function draftWeekly(f: FormData) {
+  const clientId = str(f, "clientId");
+  if (isDemo(clientId)) back(f, DEMO_MSG);
+  const s = await getSettings(clientId);
+  const { data: c } = await db().from("clients").select("*").eq("id", clientId).maybeSingle<Client>();
+  if (!s || !c) back(f, "That client no longer exists.");
+  if (!c.email) back(f, "This client has no email address on their record.");
+  const finding = await weeklyReportFinding(c, mondayOf(new Date()));
+  if (!finding) back(f, "There isn't enough to report yet. Connect Search Console or the Business Profile, or approve a change first.");
+  await upsertFindings(clientId, [finding], s.config);
+  const a = (await listActions({ clientId })).find((x) => x.dedupe_key === finding.dedupe);
+  if (a && a.status !== "new") await updateAction(a.id, { status: "new", draft: finding.draft ?? null, detail: finding.detail, summary: finding.summary, dismissed_reason: null });
+  revalidatePath("/admin", "layout");
+  redirect(`/admin/seo?client=${clientId}${a ? `&open=${a.id}` : ""}&msg=${encodeURIComponent("Drafted. Read it, edit if you like, then press Send.")}`);
+}
+
 // ---------- Setup wizard ----------
 
 export async function saveSite(f: FormData) {
@@ -218,6 +236,8 @@ export async function saveSettings(f: FormData) {
     aiBudgetGbp: Number(str(f, "aiBudgetGbp")) || 3,
     autoApply: { titles: f.get("auto:titles") === "on", schema: f.get("auto:schema") === "on", faq: f.get("auto:faq") === "on", posts: f.get("auto:posts") === "on" },
     clientReport: f.get("clientReport") === "on",
+    weeklyReport: f.get("weeklyReport") === "on",
+    weeklyReportAuto: f.get("weeklyReportAuto") === "on",
   };
   if (str(f, "wpPassword")) {
     try {

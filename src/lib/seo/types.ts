@@ -45,7 +45,10 @@ export type SeoConfig = {
   jobValueGbp?: number;
   enquiryRate?: number; // 0.05 = 5 in 100 visitors enquire
   closeRate?: number; // 0.33 = 1 in 3 enquiries becomes a job
-  clientReport?: boolean;
+  clientReport?: boolean; // monthly results email draft
+  weeklyReport?: boolean; // weekly progress email draft (on unless set to false)
+  weeklyReportAuto?: boolean; // send the weekly email without asking
+  reportToken?: string; // the private link to the client's progress page
   lat?: number;
   lng?: number;
 };
@@ -134,6 +137,7 @@ export type ActionDetail = {
   autoOk?: boolean; // one of the safe kinds that auto-apply may handle
   links?: { label: string; url: string }[];
   alert?: boolean; // site down, crawlers blocked, disconnected: pinned to the top
+  priority?: number; // a fixed place in the list for items that aren't about money (the weekly client email)
 };
 
 export type ManualStep = { text: string; copy?: string; url?: string };

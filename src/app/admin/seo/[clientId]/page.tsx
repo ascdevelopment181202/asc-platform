@@ -9,7 +9,7 @@ import { loadView, type ClientView } from "@/lib/seo/view";
 import { shotUrl } from "@/lib/seo/visual";
 import { money } from "@/lib/seo/value";
 import { btn, btnQuiet, fmt, input } from "../../ui";
-import { runNow, saveCitation, saveSettings, setEnabled, setPaused, undo } from "../actions";
+import { draftWeekly, runNow, saveCitation, saveSettings, setEnabled, setPaused, undo } from "../actions";
 import { AutoRefresh, CopyButton } from "../client";
 import { ActionCard, card, ConnStrip, Msg, Pill, Spark, Stat, Tabs } from "../ui";
 
@@ -95,7 +95,7 @@ export default async function ClientSeo({ params, searchParams }: { params: Prom
       {tab === "competitors" && <Competitors v={v} open={open} cards={cards} />}
       {tab === "ai" && <Ai v={v} open={open} cards={cards} />}
       {tab === "citations" && <Citations v={v} open={open} cards={cards} back={back} />}
-      {tab === "results" && <Results v={v} country={country} />}
+      {tab === "results" && <Results v={v} country={country} back={back} />}
       {tab === "changes" && <Changes v={v} back={back} />}
       {tab === "settings" && <Settings v={v} back={back} />}
     </div>
@@ -395,12 +395,24 @@ function Citations({ v, open, cards, back }: { v: ClientView; open: SeoAction[];
   );
 }
 
-function Results({ v, country }: { v: ClientView; country: "GB" | "US" }) {
+function Results({ v, country, back }: { v: ClientView; country: "GB" | "US"; back: string }) {
   const r = v.results;
   const leads = (m: (typeof r)[number]) => m.profileCalls + m.siteCalls + m.forms + m.enquiries;
   const job = v.settings.config.jobValueGbp;
   return (
     <div className="space-y-6">
+      <section className={`${card} flex flex-wrap items-center justify-between gap-3 p-4`}>
+        <div className="min-w-0">
+          <h2 className="font-semibold">The client&apos;s progress page</h2>
+          <p className="text-sm text-neutral-600">A private page in plain words: calls, reviews, Maps, search, AI search, what was done and what&apos;s next. No login needed. Email it, text it, or open it on a call.</p>
+          <p className="mt-1 truncate text-xs text-neutral-500">{v.reportUrl}</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <a href={v.reportUrl} target="_blank" rel="noreferrer" className={btnQuiet}>Open it</a>
+          <CopyButton text={v.reportUrl} label="Copy link" />
+          <form action={draftWeekly}><input type="hidden" name="clientId" value={v.clientId} /><input type="hidden" name="back" value={back} /><button className={btn}>Draft this week&apos;s email</button></form>
+        </div>
+      </section>
       <section className={`${card} p-4`}><Spark points={r.map((m) => ({ week: m.month, value: leads(m) }))} label="Leads from Google and the website each month" height={80} /></section>
       <section className={card}>
         <h2 className="border-b border-neutral-200 px-4 py-3 font-semibold">Leads by month</h2>
@@ -502,7 +514,13 @@ function Settings({ v, back }: { v: ClientView; back: string }) {
           <h2 className="font-semibold">Apply without asking</h2>
           <p className="text-xs text-neutral-500">Off by default. Only these four safe kinds can ever apply on their own, and website changes still have to pass the preview build and the visual check. Everything else always waits for Approve.</p>
           {([["titles", "Page titles and descriptions"], ["schema", "Structured data"], ["faq", "Answer blocks and FAQs"], ["posts", "Weekly Business Profile posts"]] as const).map(([k, l]) => <label key={k} className="flex items-center gap-2 text-sm"><input type="checkbox" name={`auto:${k}`} defaultChecked={!!c.autoApply?.[k]} /> {l}</label>)}
-          <label className="flex items-center gap-2 pt-2 text-sm"><input type="checkbox" name="clientReport" defaultChecked={!!c.clientReport} /> Draft a monthly results email for the client (it only sends when I approve it)</label>
+        </section>
+        <section className={`${card} space-y-2 p-4`}>
+          <h2 className="font-semibold">Emails to the client</h2>
+          <p className="text-xs text-neutral-500">Plain, short updates in the client&apos;s language. They never show this dashboard. Each lands in the inbox as a draft with a Send button.</p>
+          <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="weeklyReport" defaultChecked={c.weeklyReport !== false} /> Draft a weekly progress email every Monday</label>
+          <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="weeklyReportAuto" defaultChecked={!!c.weeklyReportAuto} /> Send the weekly email without asking me first</label>
+          <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="clientReport" defaultChecked={!!c.clientReport} /> Draft a monthly results email</label>
         </section>
         <button className={btn}>Save settings</button>
       </form>

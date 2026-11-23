@@ -12,6 +12,7 @@ import { detectSearch, pathOf } from "./detect";
 import { draftFor, templateReply } from "./drafts";
 import { searchKeywords } from "./gbp";
 import { inspectUrl, searchSnapshot, seriesFor, weeklyTotals } from "./gsc";
+import { weeklyReportFinding } from "./client-report";
 import { clientReportFinding } from "./mail";
 import { measureDue } from "./measure";
 import { detectOnSite, isPlaceholderTitle, parseHtml, staticCopy, type PageAudit, type SiteAudit } from "./onsite";
@@ -349,6 +350,16 @@ export async function runClient(clientId: string, mode: Mode = "daily", deadline
       }
     });
   }
+
+  // The client's weekly progress email, as a draft to send (or sent, when that client is set to send without asking).
+  if (weekly && cfg.weeklyReport !== false && s0.setup_done_at) await step("Drafting the client's weekly progress email", async () => {
+    const f = await weeklyReportFinding(c, mondayOf(new Date()));
+    await raise(f ? [f] : [], ["weekly_report"]);
+    if (f && cfg.weeklyReportAuto && !paused) {
+      const a = (await listActions({ clientId, statuses: ["new"] })).find((x) => x.dedupe_key === f.dedupe);
+      if (a) log.push(`weekly email: ${(await approveAction(a.id, { auto: true })).message}`);
+    }
+  });
 
   // 8. Write the drafts. The top few each run, within the AI budget.
   await step("Writing drafts", async () => {

@@ -322,7 +322,7 @@ export function ActionCard({ a, clientName, country, demo, back, track, updates,
               <form action={saveEdit} className="space-y-2 border-t border-neutral-200 p-3">
                 <Hidden id={a.id} back={back} />
                 {(d.fields ?? []).map((f) => (
-                  <label key={f.name} className="block text-xs text-neutral-600">{f.label}<textarea name={`field:${f.name}`} defaultValue={f.after} rows={f.after.length > 120 ? 5 : 2} className={`${input} mt-1 w-full`} /></label>
+                  <label key={f.name} className="block text-xs text-neutral-600">{f.label}<textarea name={`field:${f.name}`} defaultValue={f.after} rows={Math.min(18, Math.max(2, f.after.split("\n").length + Math.floor(f.after.length / 110)))} className={`${input} mt-1 w-full`} /></label>
                 ))}
                 {d.html && <label className="block text-xs text-neutral-600">Content (HTML)<textarea name="html" defaultValue={d.html} rows={10} className={`${input} mt-1 w-full font-mono text-xs`} /></label>}
                 <button className={btnQuiet}>Save edit</button>

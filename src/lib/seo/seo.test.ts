@@ -193,3 +193,38 @@ test("edits ignore markup that only exists as text inside the site's scripts, an
   assert.ok(html.endsWith("<noscript><p>Hello</p></noscript>\n</body></html>"), "added before the real closing body tag");
   assert.ok(html.indexOf('{"price":"$70"}') < html.indexOf("<body>") && html.indexOf('{"price":"$70"}') > html.indexOf("</title>"));
 });
+
+// ---------- The client's weekly report ----------
+import { composeReport, weeklyEmail, versus, type ReportInput } from "./report-compose";
+
+const wk = (i: number, clicks: number, calls?: number) => ({ week: `2026-0${1 + Math.floor(i / 4)}-${String(1 + (i % 4) * 7).padStart(2, "0")}`, clicks, impressions: clicks * 30, position: 6, calls, directions: calls ? 2 : undefined });
+const emptyInput = (over: Partial<ReportInput> = {}): ReportInput => ({ name: "P.I.C Driveways", firstName: "John", weeks: [], hasSearch: false, hasProfile: false, siteLeads: null, enquiries: { cur: 0, prev: 0 }, textBacks: 0, reviewRequests: 0, reviewsNew7: 0, reviewsNew28: 0, reviewCount: null, rating: null, competitors: [], ranksBefore: {}, aiChecks: [], done: [], next: [], ...over });
+
+test("the client report leaves out anything that isn't connected", () => {
+  const r = composeReport(emptyInput({ textBacks: 5, done: [{ kind: "no_js_content" }] }), "the week to 23 Nov");
+  assert.deepEqual(r.sections.map((s) => s.key), ["leads"]);
+  assert.ok(r.sections[0].lines[0].startsWith("5 missed calls answered"));
+  assert.deepEqual(r.done, ["Made your website readable by ChatGPT and other AI search tools"]);
+  assert.equal(composeReport(emptyInput(), "x").sections.length, 0);
+});
+
+test("the client report compares 4 weeks with the 4 before, and says a fall as plainly as a rise", () => {
+  assert.equal(versus({ cur: 30, prev: 20 }), "up from 20 in the 4 weeks before");
+  assert.equal(versus({ cur: 12, prev: 20 }), "down from 20 in the 4 weeks before");
+  assert.equal(versus({ cur: 5, prev: 0 }), "the first we've counted");
+  const weeks = [10, 10, 10, 10, 20, 20, 20, 20].map((c, i) => wk(i, c, i < 4 ? 5 : 3));
+  const r = composeReport(emptyInput({ weeks, hasSearch: true, hasProfile: true, reviewCount: 12, rating: 4.8, reviewsNew28: 2, reviewsNew7: 1 }), "the week to 23 Nov");
+  assert.deepEqual(r.sections.map((s) => s.key), ["leads", "reviews", "search"]);
+  assert.ok(r.sections[0].lines[0].includes("12 calls from your Google profile, down from 20"));
+  assert.ok(r.sections[2].lines[0].includes("80 clicks, up from 40"));
+  assert.equal(r.sections[1].headline, "12 reviews, 4.8 stars");
+});
+
+test("the client email is plain, lists what was done and what's next, and links to the page", () => {
+  const r = composeReport(emptyInput({ textBacks: 3, done: [{ kind: "review_reply" }, { kind: "review_reply" }, { kind: "title_rewrite", page: "/patios" }, { kind: "internal_only" }], next: [{ kind: "new_page", page: "/driveways-sheffield" }, { kind: "site_drop" }] }), "the week to 23 Nov");
+  assert.deepEqual(r.done, ["Replied to a Google review (2 times)", "Rewrote how your patios page appears on Google, so more people click it"]);
+  assert.deepEqual(r.next, ["A new page: driveways sheffield"]);
+  const mail = weeklyEmail(r, "https://app.test/progress/abc");
+  assert.ok(mail.body.startsWith("Hi John,") && mail.body.includes("https://app.test/progress/abc") && mail.body.includes("What we did this week"));
+  assert.ok(!/dashboard|—/.test(mail.body));
+});
