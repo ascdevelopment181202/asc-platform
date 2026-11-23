@@ -145,7 +145,10 @@ export async function upsertFindings(clientId: string, findings: Finding[], cfg:
       await db().from("seo_actions").update({ ...fresh, status: "new", draft: f.draft ?? null, apply: null, result: null, snoozed_until: null, dismissed_reason: null }).eq("id", old.id);
       added++;
     } else if (old.status === "new") {
-      const keepDraft = old.draft && !old.draft.needsAi;
+      // A written (AI or edited) draft is kept, and so is anything with a pull request open.
+      // A draft the detector builds itself is rebuilt, so it follows the fact sheet as that fills in.
+      const freshReady = !!f.draft && !f.draft.needsAi;
+      const keepDraft = !!old.apply?.prNumber || (!!old.draft && !old.draft.needsAi && !freshReady);
       await db().from("seo_actions").update({ ...fresh, ...(keepDraft ? {} : { draft: f.draft ?? old.draft ?? null }) }).eq("id", old.id);
     }
   }

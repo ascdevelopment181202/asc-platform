@@ -2,7 +2,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { detectSearch, isPrice, isQuestion, NOISE, type DetectInput } from "./detect";
-import { blockedByRobots, detectOnSite, parseHtml, type SiteAudit } from "./onsite";
+import { intoBody, intoHead, isHeadOnly, setDescription, setTitle } from "./html-edit";
+import { blockedByRobots, detectOnSite, isPlaceholderTitle, parseHtml, staticCopy, type SiteAudit } from "./onsite";
 import { isSafe } from "./safe";
 import type { Row, SeoAction, SeoConfig } from "./types";
 import { expectedCtr, scoreOf, valueOf } from "./value";
@@ -142,4 +143,53 @@ test("approve all safe leaves out anything with gaps, risk, new pages or a faile
   assert.equal(isSafe(a({ draft: { target: "manual", steps: [] } })), false);
   assert.equal(isSafe(a({ apply: { visual: { ok: false, note: "moved" } } })), false);
   assert.equal(isSafe(a({ detail: { evidence: { why: "" }, gain: {}, chain: [], confidence: "Low", effort: "1 click", risk: "Low", undoable: true } })), false);
+});
+
+const SHELL = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Bundled Page</title><script>${"var a=1;".repeat(400)}</script></head><body><div id="root"></div><script type="module">${"render();".repeat(400)}</script></body></html>`;
+const RENDERED = `<html><head><title>Bundled Page</title></head><body><div id="root"><nav><a href="/#services">Services</a><a href="tel:07775900145">07775 900145</a></nav><h1>Driveways in Hertfordshire</h1><p>P.I.C Driveways lays block paving, resin and tarmac driveways for homes across the county, with every job surveyed and quoted free.</p><ul><li>Block paving</li><li>Resin bound</li></ul><button>Open menu</button><script>track()</script><p>P.I.C Driveways lays block paving, resin and tarmac driveways for homes across the county, with every job surveyed and quoted free.</p></div></body></html>`;
+
+test("a script-only shell is spotted, and placeholder titles are recognised", () => {
+  const raw = parseHtml("https://example.com/", SHELL);
+  assert.ok(raw.words < 5);
+  assert.ok(isPlaceholderTitle(raw.title) && isPlaceholderTitle("") && isPlaceholderTitle("Vite App"));
+  assert.ok(!isPlaceholderTitle("Driveways in Watford | Hartley Paving"));
+});
+
+test("the plain copy mirrors the rendered page: its words and links, once each, and no scripts or buttons", () => {
+  const copy = staticCopy(RENDERED);
+  assert.ok(copy.startsWith("<noscript>") && copy.endsWith("</noscript>"));
+  assert.ok(copy.includes("<h1>Driveways in Hertfordshire</h1>"));
+  assert.ok(copy.includes('<a href="tel:07775900145">07775 900145</a>'));
+  assert.ok(copy.includes("<li>Block paving</li>"));
+  assert.equal(copy.split("lays block paving").length - 1, 1, "repeated text appears once");
+  assert.ok(!copy.includes("track()") && !copy.includes("Open menu"));
+  assert.equal(staticCopy("<html><body><div id=root></div></body></html>"), "");
+});
+
+test("edits to a bundled page change only the title, description and the added blocks", () => {
+  let html = setTitle(SHELL, "Driveways in Hertfordshire | P.I.C Driveways");
+  html = setDescription(html, 'Block paving & "resin" driveways.');
+  html = intoHead(html, '<script type="application/ld+json">{"@type":"LocalBusiness"}</script>');
+  html = intoBody(html, staticCopy(RENDERED));
+  assert.ok(html.includes("<title>Driveways in Hertfordshire | P.I.C Driveways</title>") && !html.includes("Bundled Page"));
+  assert.ok(html.includes('<meta name="description" content="Block paving &amp; &quot;resin&quot; driveways.">'));
+  assert.ok(html.length > SHELL.length, "nothing was removed");
+  assert.ok(html.includes("var a=1;".repeat(400)) && html.includes("render();".repeat(400)), "the site's own scripts are untouched");
+  assert.ok(html.indexOf("<noscript>") < html.indexOf("</body>") && html.indexOf("<noscript>") > html.indexOf('<div id="root">'));
+  assert.equal(intoBody(html, staticCopy(RENDERED)), html, "applying twice changes nothing");
+  assert.ok(isHeadOnly('<script type="application/ld+json">{}</script>') && !isHeadOnly("<noscript><p>x</p></noscript>"));
+});
+
+test("edits ignore markup that only exists as text inside the site's scripts, and keep dollar signs literal", () => {
+  const tricky = `<html><head><script>var t = "<title>fake</title></head></body>";</script><title>Bundled Page</title></head><body><div id="root"></div><script>document.write("</body>")</script></body></html>`;
+  let html = setTitle(tricky, "Resin from $70 per m² | P.I.C");
+  html = setDescription(html, "From $70. $& and $1 stay as typed.");
+  html = intoHead(html, '<script type="application/ld+json">{"price":"$70"}</script>');
+  html = intoBody(html, "<noscript><p>Hello</p></noscript>");
+  assert.ok(html.includes('var t = "<title>fake</title></head></body>";'), "script text untouched");
+  assert.ok(html.includes('document.write("</body>")'), "script text untouched");
+  assert.ok(html.includes("<title>Resin from $70 per m² | P.I.C</title>"));
+  assert.ok(html.includes('content="From $70. $&amp; and $1 stay as typed."'));
+  assert.ok(html.endsWith("<noscript><p>Hello</p></noscript>\n</body></html>"), "added before the real closing body tag");
+  assert.ok(html.indexOf('{"price":"$70"}') < html.indexOf("<body>") && html.indexOf('{"price":"$70"}') > html.indexOf("</title>"));
 });
