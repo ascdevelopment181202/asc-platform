@@ -5,7 +5,7 @@ import { db, type Client } from "@/lib/supabase";
 import { replyToReview, type GoogleReview } from "@/lib/google-reviews";
 import type { ApplyInfo, Draft, SeoAction, SeoChange, SeoConfig, SeoSettings } from "./types";
 import { AiUnavailable, claudeJson, MODELS } from "./ai";
-import { closePr, commitFiles, deleteFile, GithubNotConnected, mergePr, openPr, prState, readFile, repoInfo, tree, type FileEdit, type TreeFile } from "./github";
+import { closePr, commitFiles, deleteFile, GithubNotConnected, mergePr, openPr, prState, readFile, repoInfo, tree, type FileEdit, type TreeFile, siteFilesProblem } from "./github";
 import { createPost, deletePost, getLocation, patchLocation, v4Path, withUtm, type RawLocation } from "./gbp";
 import { getAction, getSettings, globalPaused, logChange, pagesThisWeek, updateAction } from "./store";
 import { visualCheck } from "./visual";
@@ -128,6 +128,9 @@ export async function planRepoEdits(a: SeoAction, cfg: SeoConfig): Promise<{ edi
   const info = await repoInfo(repo);
   const base = cfg.githubBranch || info.defaultBranch;
   const files = await tree(repo, base);
+  // Never write into a repo that doesn't hold the site: the live site would never see the change.
+  const problem = siteFilesProblem(files);
+  if (problem) throw new Error(problem);
   const names = new Set(files.map((f) => f.path));
   const framework = files.some((f) => /\.(tsx|jsx|astro|vue|svelte)$/.test(f.path));
   // A single-page app (Vite and the like) has one index.html at the top that every page is served from:

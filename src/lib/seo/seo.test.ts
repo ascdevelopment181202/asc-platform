@@ -228,3 +228,16 @@ test("the client email is plain, lists what was done and what's next, and links 
   assert.ok(mail.body.startsWith("Hi John,") && mail.body.includes("https://app.test/progress/abc") && mail.body.includes("What we did this week"));
   assert.ok(!/dashboard|—/.test(mail.body));
 });
+
+// ---------- Repo holds the site ----------
+import { siteFilesProblem } from "./repo-check";
+
+test("a repo that only holds a zip, or nothing, is flagged before any fix is written to it", () => {
+  const f = (...p: string[]) => p.map((path) => ({ path, type: "blob" }));
+  assert.match(siteFilesProblem(f("picdrivway.zip"))!, /only holds a zip \(picdrivway\.zip\)/);
+  assert.match(siteFilesProblem(f())!, /empty/);
+  assert.match(siteFilesProblem(f("README.md"))!, /no index\.html/);
+  assert.equal(siteFilesProblem(f("index.html", "googlef9.html")), null);
+  assert.equal(siteFilesProblem(f("package.json", "src/app/page.tsx")), null);
+  assert.equal(siteFilesProblem(f("public/index.html")), null);
+});

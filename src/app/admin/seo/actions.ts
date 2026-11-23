@@ -1,5 +1,7 @@
 "use server";
 
+import { seoEnv } from "@/lib/env";
+
 import { after } from "next/server";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -10,7 +12,7 @@ import { weeklyReportFinding } from "@/lib/seo/client-report";
 import { DEMO_ID } from "@/lib/seo/demo";
 import { draftFor } from "@/lib/seo/drafts";
 import { runClient } from "@/lib/seo/engine";
-import { repoForVercelDomain } from "@/lib/seo/github";
+import { repoForVercelDomain, checkSiteRepo } from "@/lib/seo/github";
 import { ensureSettings, getAction, getSettings, kvGet, kvSet, listActions, mondayOf, patchState, saveConfig, updateAction, upsertFindings } from "@/lib/seo/store";
 import { DEFAULT_PLAYBOOK } from "@/lib/seo/strategist";
 import { isSafe } from "@/lib/seo/safe";
@@ -177,6 +179,12 @@ export async function saveSite(f: FormData) {
     }
   }
   await saveConfig(clientId, patch);
+  // Catch a repo that doesn't hold the site (a zip, or empty) now, not after the first approved fix goes nowhere.
+  if (siteType === "vercel" && githubRepo && seoEnv.githubToken()) {
+    const check = await checkSiteRepo(githubRepo).catch((err: unknown) => ({ ok: false, error: err instanceof Error ? err.message : String(err) }));
+    await patchState(clientId, { github: { ...check, at: new Date().toISOString() } });
+    if (!check.ok) redirect(`/admin/seo/${clientId}/setup?step=2&msg=${encodeURIComponent(`Saved, but check the repo: ${check.error}`)}`);
+  }
   redirect(`/admin/seo/${clientId}/setup?step=2`);
 }
 
