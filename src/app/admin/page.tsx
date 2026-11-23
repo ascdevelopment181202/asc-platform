@@ -4,7 +4,8 @@ import { clientLabel } from "@/lib/clients";
 import { addClientManually, addClientQuietly, addTask, completeTask } from "./actions";
 import { btn, btnQuiet, Countdown, fmt, input, StatusPill } from "./ui";
 import { googleAccount } from "@/lib/google";
-import { googleEnabled } from "@/lib/env";
+import { googleEnabled, seoEnv } from "@/lib/env";
+import { listActions } from "@/lib/seo/store";
 import { US_CARRIERS, US_TIMEZONES } from "@/lib/onboarding-fields";
 
 export const dynamic = "force-dynamic";
@@ -18,6 +19,7 @@ export default async function AdminHome({ searchParams }: { searchParams: Promis
     db().from("clients").select("*").order("paid_at", { ascending: false }).returns<Client[]>(),
     db().from("tasks").select("*").is("done_at", null).order("due_at", { ascending: true, nullsFirst: false }).returns<Task[]>(),
   ]);
+  const seoOpen = seoEnv.on() ? await listActions({ statuses: ["new"], limit: 300 }).catch(() => []) : [];
   const all = (clients ?? []).sort((a, b) => ORDER.indexOf(a.status) - ORDER.indexOf(b.status));
   const byId = new Map(all.map((c) => [c.id, c]));
   const count = (s: string) => all.filter((c) => c.status === s).length;
@@ -40,6 +42,17 @@ export default async function AdminHome({ searchParams }: { searchParams: Promis
           <a href="/admin/google/start" className={gAccount ? btnQuiet : btn}>{gAccount ? "Reconnect" : "Connect Google"}</a>
         )}
       </section>
+      {seoEnv.on() && (
+        <Link href="/admin/seo" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-neutral-200 bg-white p-4 hover:bg-neutral-50">
+          <div>
+            <p className="text-sm font-medium">
+              SEO: {seoOpen.length} to approve{seoOpen.some((a) => a.detail.alert) ? `, ${seoOpen.filter((a) => a.detail.alert).length} alert${seoOpen.filter((a) => a.detail.alert).length === 1 ? "" : "s"}` : ""}
+            </p>
+            <p className="text-xs text-neutral-500">{seoOpen[0] ? seoOpen[0].summary : "Nothing waiting. The next check runs at 5am."}</p>
+          </div>
+          <span className={btnQuiet}>Open the inbox</span>
+        </Link>
+      )}
       <section className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         <Stat label="Building" value={count("building")} />
         <Stat label="Awaiting form" value={count("awaiting_form")} />

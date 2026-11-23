@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { gbp, KIND_LABEL, platformCosts, RATES, usageThisMonth, USD_TO_GBP, monthRange } from "@/lib/usage";
+import { seoEnv } from "@/lib/env";
+import { aiSpend } from "@/lib/seo/ai";
 
 export const dynamic = "force-dynamic";
 
@@ -8,6 +10,7 @@ export default async function UsagePage() {
   const rows = await usageThisMonth();
   const { elapsed } = monthRange();
   const fixed = platformCosts();
+  const seoAi = seoEnv.on() ? await aiSpend(null).catch(() => null) : null;
   const fixedGbp = fixed.reduce((n, f) => n + f.usd, 0) * USD_TO_GBP;
   const texting = rows.reduce((n, r) => n + r.costGbp, 0);
   const projectedTexting = rows.reduce((n, r) => n + r.projectedGbp, 0);
@@ -102,6 +105,14 @@ export default async function UsagePage() {
               </li>
             ))}
           </ul>
+          {seoAi && (
+            <p className="mt-3 flex justify-between border-t border-neutral-100 pt-2 text-sm">
+              <span>SEO autopilot AI, this month</span>
+              <span className="text-neutral-600">
+                {gbp(seoAi.spent)} of a £{seoAi.cap} cap
+              </span>
+            </p>
+          )}
           <p className="mt-2 text-xs text-neutral-500">Change these with COST_VERCEL_USD, COST_SUPABASE_USD and COST_RESEND_USD in Vercel when you change plan. US texting registration fees aren&apos;t included.</p>
         </section>
       </div>
