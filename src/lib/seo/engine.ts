@@ -14,7 +14,8 @@ import { searchKeywords } from "./gbp";
 import { inspectUrl, searchSnapshot, seriesFor, weeklyTotals } from "./gsc";
 import { clientReportFinding } from "./mail";
 import { measureDue } from "./measure";
-import { detectOnSite, type SiteAudit } from "./onsite";
+import { detectOnSite, isPlaceholderTitle, parseHtml, staticCopy, type PageAudit, type SiteAudit } from "./onsite";
+import { renderPage } from "./visual";
 import { checkCompetitors, competitorFindings, latestCompetitors } from "./places";
 import { readProfile, reviewFindings } from "./profile";
 import { monthResults, realEnquiryRate } from "./results";
@@ -38,6 +39,41 @@ export type PageSnapshot = { period: string; rows: (Row & { prevClicks: number }
 
 function alert(cfg: SeoConfig, kind: string, summary: string, why: string, steps: string[]): Finding {
   return { kind, type: "Technical", dedupe: kind, summary, detail: { evidence: { why }, gain: {}, chain: [{ label: "Protects", value: "every visit and ranking the site already has" }], confidence: "High", effort: "5 min manual", risk: "High", undoable: false, alert: true, links: cfg.domain ? [{ label: "Live site", url: `https://${cfg.domain}` }] : undefined }, draft: { target: "manual", minutes: 5, steps: [...steps.map((text) => ({ text })), { text: "Press Mark done once it's sorted. The check runs again tomorrow." }] } };
+}
+
+// Checks that read the page's words. When the words only exist after scripts run, they're judged on the rendered page instead.
+const CONTENT_KINDS = ["phone_click", "nap_mismatch", "no_cta", "no_reviews_shown", "h1_missing", "thin_pages", "alt_text", "faq_schema", "quotable", "meta_fix"];
+
+/**
+ * The home page is an empty shell until its scripts run (a bundled single-page site).
+ * Google runs scripts; most AI crawlers don't. This builds the fix from the page's own rendered words:
+ * a real title and description in the HTML, and an invisible plain copy for crawlers. Nothing visible changes.
+ */
+function shellFix(cfg: SeoConfig, raw: PageAudit, rendered: PageAudit, renderedHtml: string, base: Finding): Finding {
+  const f = cfg.facts ?? {};
+  const town = cfg.towns?.[0];
+  const trade = cfg.trade ? cfg.trade[0].toUpperCase() + cfg.trade.slice(1) : "";
+  const factTitle = [trade && town ? `${trade} in ${town}` : trade || "", f.businessName ?? cfg.domain].filter(Boolean).join(" | ");
+  const title = !isPlaceholderTitle(rendered.title) ? rendered.title : factTitle;
+  const firstPara = renderedHtml.replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/gi, " ").match(/<p[^>]*>([^<]{60,400})<\/p>/i)?.[1]?.replace(/\s+/g, " ").trim();
+  const description = rendered.description || (firstPara ? (firstPara.length > 155 ? `${firstPara.slice(0, 152).replace(/\s+\S*$/, "")}...` : firstPara) : "");
+  const copy = staticCopy(renderedHtml);
+  if (!copy) return base;
+  const fields = [{ name: "title", label: "Title", before: raw.title, after: title.slice(0, 70) }, ...(description ? [{ name: "description", label: "Description", before: raw.description, after: description }] : [])].filter((x) => x.after && x.after !== x.before);
+  return {
+    ...base,
+    summary: "AI crawlers see an empty page: the site's words only appear after scripts run. Add a readable copy and a real title.",
+    detail: {
+      ...base.detail,
+      effort: "1 click",
+      evidence: {
+        why: `Read without JavaScript, the home page has ${raw.words} word${raw.words === 1 ? "" : "s"} and its title is "${raw.title || "(none)"}". Once its scripts run it has ${rendered.words} words${!isPlaceholderTitle(rendered.title) && rendered.title !== raw.title ? ` and the title "${rendered.title}"` : ""}. Google runs scripts, so it can read the page. ChatGPT, Claude, Perplexity and most other AI crawlers don't, so to them this business has no services, no areas and no phone number. This change puts a real title and description into the page itself and adds a plain copy of the page's own words that only those crawlers read. Visitors see no difference. It's the quick fix; the full one is publishing the site as real HTML instead of a script bundle.`,
+        page: "/",
+        numbers: [{ label: "Words without scripts", value: String(raw.words) }, { label: "Words after scripts run", value: String(rendered.words) }, { label: "Title in the page itself", value: raw.title || "(none)" }, { label: "Title after scripts run", value: rendered.title || "(none)" }],
+      },
+    },
+    draft: { target: "site", page: "/", fields, blocks: [{ page: "/", label: "Plain copy of the page's words, for crawlers that don't run scripts", html: copy }] },
+  };
 }
 
 /** Rolls the small deterministic site fixes into one reviewed change: the launch check. */
@@ -130,7 +166,30 @@ export async function runClient(clientId: string, mode: Mode = "daily", deadline
   if (cfg.domain && state.health?.up !== false) await step("Reading the site's pages", async () => {
     audit = await crawlSite(cfg.domain!, weekly ? 40 : 1);
     let f = detectOnSite(cfg, audit, { monthlyClicks: clicksNow, appUrl: seoEnv.appUrl(), trackingToken: s0.tracking_token });
-    if (!weekly) return void (await raise(f.filter((x) => ALERT_KINDS.includes(x.kind)), ALERT_KINDS));
+    if (!weekly) {
+      // Daily: alerts only. An empty-shell alert that's already open keeps its fuller weekly write-up.
+      const shellNow = f.some((x) => x.kind === "no_js_content");
+      const known = shellNow && (await listActions({ clientId, statuses: ["new", "approved"] })).some((a) => a.kind === "no_js_content");
+      return void (await raise(f.filter((x) => ALERT_KINDS.includes(x.kind) && !(known && x.kind === "no_js_content")), shellNow ? ALERT_KINDS.filter((k) => k !== "no_js_content") : ALERT_KINDS));
+    }
+    // An empty shell until scripts run: read the rendered page too, so the other checks judge what's really there.
+    const shell = f.find((x) => x.kind === "no_js_content");
+    if (shell && audit.pages[0]) {
+      const raw = audit.pages[0];
+      const r = time() ? await renderPage(`https://${cfg.domain}`) : null;
+      const rendered = r ? parseHtml(`https://${cfg.domain}/`, r.html) : null;
+      if (r && rendered && rendered.words >= 80) {
+        const seen: SiteAudit = { ...audit, pages: [{ ...rendered, path: "/", status: 200, hasTracking: raw.hasTracking, schemaTypes: [...new Set([...raw.schemaTypes, ...rendered.schemaTypes])] }, ...audit.pages.slice(1)] };
+        const fix = shellFix(cfg, raw, rendered, r.html, shell);
+        const fixesTitle = fix.draft?.fields?.some((x) => x.name === "title");
+        f = [fix, ...detectOnSite(cfg, seen, { monthlyClicks: clicksNow, appUrl: seoEnv.appUrl(), trackingToken: s0.tracking_token }).filter((x) => x.kind !== "no_js_content" && !(fixesTitle && x.dedupe === "title_rewrite:/"))];
+        audit = seen;
+      } else {
+        // Couldn't render it: the content checks would only be guessing, so they wait for this to be fixed.
+        shell.detail.evidence.why += " The other content checks (phone link, call to action, headings, reviews) are on hold for this site until this is fixed, because the words can't be read.";
+        f = f.filter((x) => !CONTENT_KINDS.includes(x.kind));
+      }
+    }
     pages = audit.pages.map((p) => ({ path: p.path, title: p.title, description: p.description, words: p.words, h1: p.h1[0] ?? "", status: p.status }));
     await putLatest(clientId, "pages", pages);
     state.crawl = { at: new Date().toISOString(), pages: pages.length, tracking: !!audit.pages[0]?.hasTracking };

@@ -10,6 +10,7 @@ import { createPost, deletePost, getLocation, patchLocation, v4Path, withUtm, ty
 import { getAction, getSettings, globalPaused, logChange, pagesThisWeek, updateAction } from "./store";
 import { visualCheck } from "./visual";
 import { pingIndexNow } from "./bing";
+import { intoBody, intoHead, isHeadOnly, setDescription, setTitle } from "./html-edit";
 import { sendClientReport } from "./mail";
 
 const DAY = 86_400_000;
@@ -51,18 +52,6 @@ export function changeList(a: SeoAction, cfg: SeoConfig): string {
 }
 
 // ---------- Editing a site through its GitHub repo ----------
-
-const setTitle = (html: string, title: string) => (/<title[^>]*>[\s\S]*?<\/title>/i.test(html) ? html.replace(/<title[^>]*>[\s\S]*?<\/title>/i, `<title>${escHtml(title)}</title>`) : html.replace(/<head[^>]*>/i, (m) => `${m}\n<title>${escHtml(title)}</title>`));
-const setDescription = (html: string, d: string) => {
-  const tag = `<meta name="description" content="${escAttr(d)}">`;
-  const re = /<meta\b[^>]*name\s*=\s*["']description["'][^>]*>/i;
-  return re.test(html) ? html.replace(re, tag) : html.replace(/<\/head>/i, `${tag}\n</head>`);
-};
-const escHtml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-const escAttr = (s: string) => escHtml(s).replace(/"/g, "&quot;");
-const intoHead = (html: string, block: string) => (html.includes(block) ? html : html.replace(/<\/head>/i, `${block}\n</head>`));
-const intoBody = (html: string, block: string) => (html.includes(block) ? html : html.replace(/<\/body>/i, `${block}\n</body>`));
-const isHeadOnly = (block: string) => /^\s*(<script[^>]*application\/ld\+json[\s\S]*?<\/script>\s*)+$/i.test(block);
 
 function htmlFileFor(files: TreeFile[], root: string, page: string): string | null {
   const p = page.replace(/^\/|\/$/g, "");
@@ -141,7 +130,11 @@ export async function planRepoEdits(a: SeoAction, cfg: SeoConfig): Promise<{ edi
   const files = await tree(repo, base);
   const names = new Set(files.map((f) => f.path));
   const framework = files.some((f) => /\.(tsx|jsx|astro|vue|svelte)$/.test(f.path));
+  // A single-page app (Vite and the like) has one index.html at the top that every page is served from:
+  // titles, head tags and the plain copy can go straight into it, with no AI involved.
+  const spa = framework && names.has("index.html") && !files.some((f) => /^(src\/)?(app|pages)\/.*\.(tsx|jsx|ts|js|astro)$/.test(f.path));
   const root = framework ? "public/" : names.has("public/index.html") && !names.has("index.html") ? "public/" : "";
+  const htmlRoot = spa ? "" : root;
   const d: Draft = a.draft ?? {};
   const edits = new Map<string, FileEdit>();
   const put = async (path: string, after: string) => {
@@ -158,19 +151,21 @@ export async function planRepoEdits(a: SeoAction, cfg: SeoConfig): Promise<{ edi
   }
 
   const blocks = [...(d.blocks ?? []), ...(d.html && !d.fields?.length && isHeadOnly(d.html) ? [{ page: d.page ?? "/", label: "Structured data", html: d.html }] : []), ...(d.html && d.page === "*" ? [{ page: "*", label: "Tracking script", html: d.html }] : [])];
-  const deterministic = !framework;
+  const deterministic = !framework || spa;
   let needsAi = false;
+  const fileFor = (page: string) => (spa ? "index.html" : htmlFileFor(files, htmlRoot, page));
 
   if (deterministic) {
-    const htmlFiles = files.filter((f) => f.path.startsWith(root) && f.path.endsWith(".html")).slice(0, 60);
+    const htmlFiles = spa ? [{ path: "index.html" }] : files.filter((f) => f.path.startsWith(htmlRoot) && f.path.endsWith(".html")).slice(0, 60);
     for (const b of blocks) {
-      const targets = b.page === "*" ? htmlFiles.map((f) => f.path) : [htmlFileFor(files, root, b.page)].filter((x): x is string => !!x);
+      const targets = b.page === "*" ? htmlFiles.map((f) => f.path) : [fileFor(b.page)].filter((x): x is string => !!x);
       for (const t of targets) {
         const cur = await current(t);
         if (cur) await put(t, isHeadOnly(b.html) ? intoHead(cur, b.html) : intoBody(cur, b.html));
       }
     }
-    const file = d.page && d.page !== "*" ? htmlFileFor(files, root, d.page) : null;
+    // In a single-page app only the home page's title lives in index.html; other pages set theirs in code.
+    const file = d.page && d.page !== "*" && (!spa || d.page === "/") ? fileFor(d.page) : null;
     if (file && d.fields?.length && !NEW_PAGE_KINDS.includes(a.kind)) {
       let cur = (await current(file))!;
       for (const f of d.fields) {
@@ -185,7 +180,7 @@ export async function planRepoEdits(a: SeoAction, cfg: SeoConfig): Promise<{ edi
   } else if (blocks.length || d.fields?.length || d.html || d.note) needsAi = true;
 
   if (needsAi) {
-    const request = deterministic ? requestText({ ...a, draft: { ...d, blocks: undefined, fields: NEW_PAGE_KINDS.includes(a.kind) || !htmlFileFor(files, root, d.page ?? "/") ? d.fields : undefined, html: d.html && d.page !== "*" && !isHeadOnly(d.html) ? d.html : undefined } }) : requestText(a);
+    const request = deterministic ? requestText({ ...a, draft: { ...d, blocks: undefined, fields: NEW_PAGE_KINDS.includes(a.kind) || !(d.page && d.page !== "*" && (!spa || d.page === "/") && fileFor(d.page)) ? d.fields : undefined, html: d.html && d.page !== "*" && !isHeadOnly(d.html) ? d.html : undefined } }) : requestText(a);
     for (const e of await aiEdit(a, cfg, repo, base, files, request, d.page ?? "/")) {
       const prior = edits.get(e.path);
       edits.set(e.path, prior ? { path: e.path, before: prior.before, after: e.after } : e);

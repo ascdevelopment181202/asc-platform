@@ -33,9 +33,14 @@ export async function tree(repo: string, ref: string): Promise<TreeFile[]> {
 }
 
 export async function readFile(repo: string, path: string, ref: string): Promise<{ content: string; sha: string } | null> {
-  const r = await gh<{ content?: string; sha: string; encoding?: string } | null>(`/repos/${repo}/contents/${path.split("/").map(encodeURIComponent).join("/")}?ref=${encodeURIComponent(ref)}`, { ok404: true });
-  if (!r || r.content === undefined) return null;
-  return { content: Buffer.from(r.content, "base64").toString("utf8"), sha: r.sha };
+  const r = await gh<{ content?: string; sha: string; encoding?: string; size?: number; type?: string } | null>(`/repos/${repo}/contents/${path.split("/").map(encodeURIComponent).join("/")}?ref=${encodeURIComponent(ref)}`, { ok404: true });
+  if (!r || r.type === "dir" || Array.isArray(r)) return null;
+  // Files over 1 MB come back with no content here (a bundled single-page site easily is). The blob API returns them whole.
+  if (r.encoding !== "base64" || (r.size ?? 0) > 0 && !r.content) {
+    const blob = await gh<{ content: string; encoding: string }>(`/repos/${repo}/git/blobs/${r.sha}`);
+    return { content: Buffer.from(blob.content, "base64").toString("utf8"), sha: r.sha };
+  }
+  return { content: Buffer.from(r.content ?? "", "base64").toString("utf8"), sha: r.sha };
 }
 
 export type FileEdit = { path: string; before: string | null; after: string };
@@ -45,6 +50,8 @@ export async function commitFiles(repo: string, branch: string, files: FileEdit[
   for (const f of files) {
     const cur = await readFile(repo, f.path, branch);
     if (cur?.content === f.after) continue;
+    // Safety net: an SEO edit only ever adds or swaps a little. If a file would shrink a lot, something read wrong, so stop.
+    if (cur && cur.content.length > 2000 && f.after.length < cur.content.length * 0.6) throw new Error(`Refusing to write ${f.path}: the change would remove most of the file.`);
     await gh(`/repos/${repo}/contents/${f.path.split("/").map(encodeURIComponent).join("/")}`, { method: "PUT", body: { message, content: Buffer.from(f.after, "utf8").toString("base64"), branch, ...(cur ? { sha: cur.sha } : {}) } });
   }
 }

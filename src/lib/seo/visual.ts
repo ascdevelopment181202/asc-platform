@@ -94,3 +94,21 @@ export async function shotUrl(path: string): Promise<string | null> {
   const { data } = await db().storage.from(BUCKET).createSignedUrl(path, 3600);
   return data?.signedUrl ?? null;
 }
+
+/** The page after its scripts have run: what Google sees. Null when the browser can't start. */
+export async function renderPage(url: string): Promise<{ html: string; title: string } | null> {
+  let browser: import("puppeteer-core").Browser | null = null;
+  try {
+    const [{ default: chromium }, puppeteer] = await Promise.all([import("@sparticuz/chromium-min"), import("puppeteer-core")]);
+    browser = await puppeteer.launch({ args: await puppeteer.defaultArgs({ args: chromium.args, headless: "shell" }), executablePath: await chromium.executablePath(PACK), headless: "shell" });
+    const page = await browser.newPage();
+    await page.setViewport({ width: 1280, height: 900 });
+    await page.goto(url, { waitUntil: "networkidle2", timeout: 30_000 });
+    return { html: (await page.content()).slice(0, 3_000_000), title: await page.title() };
+  } catch (err) {
+    console.error("SEO render failed", url, err instanceof Error ? err.message : err);
+    return null;
+  } finally {
+    await browser?.close().catch(() => null);
+  }
+}

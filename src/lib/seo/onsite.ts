@@ -147,6 +147,41 @@ export function blockedByRobots(robots: string | null, bots = AI_BOTS): string[]
 
 export const sitemapsInRobots = (robots: string | null) => [...(robots ?? "").matchAll(/^\s*sitemap\s*:\s*(\S+)/gim)].map((m) => m[1]);
 
+/** Titles a site builder leaves behind when nobody set a real one. */
+export const isPlaceholderTitle = (t: string) => !t.trim() || /^(bundled page|vite app|vite \+ react|react app|document|untitled|home|index|new page|my site|website)$/i.test(t.trim());
+
+/**
+ * The page's real words, lifted from the rendered HTML, as plain markup inside <noscript>.
+ * Visitors with a normal browser never see it, so the design can't change; crawlers that don't run scripts get the content.
+ * It mirrors what the page already shows: nothing is added.
+ */
+export function staticCopy(renderedHtml: string): string {
+  const body = (renderedHtml.match(/<body[\s\S]*<\/body>/i)?.[0] ?? renderedHtml).replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>|<noscript[\s\S]*?<\/noscript>|<svg[\s\S]*?<\/svg>|<!--[\s\S]*?-->/gi, " ");
+  const out: string[] = [];
+  const seen = new Set<string>();
+  let chars = 0;
+  for (const m of body.matchAll(/<(h[1-4]|p|li|a|button)\b([^>]*)>([\s\S]*?)<\/\1>/gi)) {
+    const tag = m[1].toLowerCase();
+    const text = decode(m[3].replace(/<[^>]+>/g, " "));
+    if (text.length < 2 || text.length > 900) continue;
+    let line = "";
+    if (tag === "a") {
+      const href = attr(`<a ${m[2]}>`, "href");
+      if (!/^(tel:|mailto:|\/|https?:)/i.test(href) || /^javascript:/i.test(href)) continue;
+      line = `<p><a href="${href.replace(/"/g, "&quot;")}">${escText(text)}</a></p>`;
+    } else if (tag === "button") continue;
+    else line = `<${tag}>${escText(text)}</${tag}>`;
+    const key = `${tag}:${text}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    chars += line.length;
+    if (chars > 12_000 || out.length >= 160) break;
+    out.push(line);
+  }
+  return out.length ? `<noscript>\n<div>\n${out.join("\n")}\n</div>\n</noscript>` : "";
+}
+const escText = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
 // ---------- What the fixes look like (written from the fact sheet, never invented) ----------
 
 export function localBusinessSchema(cfg: SeoConfig): string {
@@ -178,7 +213,7 @@ export function llmsTxt(cfg: SeoConfig, pages: PageAudit[]): string {
   if ((cfg.services ?? []).length) lines.push("## Services", "", ...(cfg.services ?? []).map((s) => `- ${s}`), "");
   if (where) lines.push("## Areas covered", "", ...(cfg.towns ?? []).map((t) => `- ${t}`), "");
   const listed = pages.filter((p) => p.status === 200 && !p.noindex).slice(0, 30);
-  if (listed.length) lines.push("## Pages", "", ...listed.map((p) => `- [${p.title || p.path}](${base}${p.path === "/" ? "" : p.path})${p.description ? `: ${p.description}` : ""}`), "");
+  if (listed.length) lines.push("## Pages", "", ...listed.map((p) => `- [${isPlaceholderTitle(p.title) ? (p.path === "/" ? "Home" : p.path.replace(/^\//, "").replace(/-/g, " ")) : p.title}](${base}${p.path === "/" ? "" : p.path})${p.description ? `: ${p.description}` : ""}`), "");
   return lines.join("\n");
 }
 
