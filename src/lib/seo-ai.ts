@@ -83,7 +83,6 @@ Other pages on this site (yours must read differently from all of them): ${sibli
     body: JSON.stringify({
       model: process.env.ANTHROPIC_MODEL || "claude-sonnet-5-5",
       max_tokens: 2000,
-      temperature: 0.9,
       system: SYSTEM,
       messages: [{ role: "user", content: user }],
     }),

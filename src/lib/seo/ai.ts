@@ -72,7 +72,7 @@ export async function claude(o: { clientId: string | null; purpose: string; mode
     body: JSON.stringify({
       model: o.model,
       max_tokens: o.maxTokens ?? 2000,
-      ...(o.temperature !== undefined ? { temperature: o.temperature } : {}),
+      // No temperature: current Claude models reject it ("deprecated for this model").
       system: o.system,
       messages: [{ role: "user", content: o.user }],
       ...(o.webSearch ? { tools: [{ type: "web_search_20250305", name: "web_search", max_uses: o.webSearch }] } : {}),
