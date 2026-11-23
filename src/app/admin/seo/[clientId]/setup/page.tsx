@@ -84,31 +84,40 @@ async function StepGoogle({ c, cfg, me }: { c: Client; cfg: Awaited<ReturnType<t
   let properties: string[] = [];
   let locations: GbpLocation[] = [];
   const errors: string[] = [];
+  let gbpBlocked = false;
   if (account) {
     await Promise.all([
       listSearchConsoleSites().then((r) => (properties = r)).catch((e) => errors.push(`Search Console: ${e instanceof Error ? e.message : e}`)),
-      listBusinessLocations().then((r) => (locations = r)).catch((e) => errors.push(`Business Profile: ${e instanceof Error ? e.message : e}`)),
+      listBusinessLocations().then((r) => (locations = r)).catch((e) => {
+        const m = e instanceof Error ? e.message : String(e);
+        // A 429 on the account-management API with a per-minute limit means Google hasn't granted this app Business Profile API access yet (its quota is 0).
+        gbpBlocked = /429|quota/i.test(m);
+        if (!gbpBlocked) errors.push(`Business Profile: ${m}`);
+      }),
     ]);
   }
+  // Clients must give access to the account the platform is actually signed in as.
+  const who = account?.email ?? me;
   const site = await hostedSite(c.id).catch(() => null);
   const prop = cfg.gscProperty ?? site?.gsc_property ?? matchProperty(properties, cfg.domain) ?? "";
   const loc = cfg.gbpLocation ?? c.gbp_location ?? site?.gbp_location ?? matchLocation(locations, c.business_name)?.name ?? "";
-  const askGsc = `Hi, could you give me access to your website's Google Search Console? It shows which searches bring people to your site.\n\n1. Go to search.google.com/search-console and sign in.\n2. Settings, then Users and permissions, then Add user.\n3. Enter ${me}, choose Full, and tap Add.\n\nThanks!`;
-  const askGbp = `Hi, to manage your Google listing for you I need adding as a manager. It takes a minute:\n\n1. Search Google for your business name while signed in to the account that owns the listing.\n2. Tap the three dots, then Business Profile settings, then People and access.\n3. Tap Add, enter ${me}, choose Manager, and tap Invite.\n\nThanks!`;
+  const askGsc = `Hi, could you give me access to your website's Google Search Console? It shows which searches bring people to your site.\n\n1. Go to search.google.com/search-console and sign in.\n2. Settings, then Users and permissions, then Add user.\n3. Enter ${who}, choose Full, and tap Add.\n\nThanks!`;
+  const askGbp = `Hi, to manage your Google listing for you I need adding as a manager. It takes a minute:\n\n1. Search Google for your business name while signed in to the account that owns the listing.\n2. Tap the three dots, then Business Profile settings, then People and access.\n3. Tap Add, enter ${who}, choose Manager, and tap Invite.\n\nThanks!`;
   return (
     <form action={saveGoogle} className={`${card} space-y-4 p-5`}>
       <input type="hidden" name="clientId" value={c.id} /><input type="hidden" name="back" value={`/admin/seo/${c.id}/setup?step=2`} />
       {!account && <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Google isn&apos;t connected. Connect it on the <Link href="/admin" className="underline">admin home page</Link>, signed in as {me}, then come back. You can also skip this step and connect later.</p>}
       {account && <p className="text-sm text-neutral-600">Connected as {account.email}. {properties.length} Search Console properties and {locations.length} Business Profiles found.</p>}
       {errors.map((e) => <p key={e} className="rounded-lg bg-red-50 p-3 text-sm text-red-800">{e}</p>)}
+      {gbpBlocked && <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Google hasn&apos;t approved Business Profile API access for your app yet, so profiles can&apos;t be listed or edited from here. Nothing is broken: leave Business Profile empty and profile fixes arrive as short step-by-step tasks. Once Google approves access, come back and pick the profile.</p>}
       <label className={label}>Search Console property {prop && !cfg.gscProperty && <span className="font-normal text-green-700">(matched to {cfg.domain})</span>}
         <select name="gscProperty" defaultValue={prop} className={field}><option value="">None yet</option>{[...new Set([...properties, prop].filter(Boolean))].map((p) => <option key={p} value={p}>{p}</option>)}</select>
       </label>
-      {!prop && <Ask title={`${cfg.domain ?? "This site"} isn't in the connected account's Search Console.`} how={`If nobody has set it up: sign in as ${me} at search.google.com/search-console, Add property, enter ${cfg.domain ?? "the domain"} and add the DNS record it shows. If the client has it already, send them this:`} text={askGsc} />}
+      {!prop && <Ask title={`${cfg.domain ?? "This site"} isn't in the connected account's Search Console.`} how={`If you verified it while signed in to a different Google account, open Search Console in that account, go to Settings, Users and permissions, Add user, enter ${who} and choose Full or Owner, then reload this page. If nobody has set it up: sign in as ${who} at search.google.com/search-console and add the property. If the client has it already, send them this:`} text={askGsc} />}
       <label className={label}>Business Profile {loc && !cfg.gbpLocation && <span className="font-normal text-green-700">(matched by name)</span>}
         <select name="gbpLocation" defaultValue={loc} className={field}><option value="">None yet</option>{locations.map((l) => <option key={l.name} value={l.name}>{l.title} · {l.address}</option>)}{loc && !locations.some((l) => l.name === loc) && <option value={loc}>{c.gbp_title ?? loc}</option>}</select>
       </label>
-      {!loc && <Ask title="No Business Profile for this client is visible to the connected account." how="Send the client this. Until they do, profile fixes arrive as step-by-step tasks." text={askGbp} />}
+      {!loc && !gbpBlocked && <Ask title="No Business Profile for this client is visible to the connected account." how="Send the client this. Until they do, profile fixes arrive as step-by-step tasks." text={askGbp} />}
       <div className="flex gap-2"><button className={btn}>Next: Plan</button><Link href={`/admin/seo/${c.id}/setup?step=3`} className={btnQuiet}>Skip for now</Link></div>
     </form>
   );
