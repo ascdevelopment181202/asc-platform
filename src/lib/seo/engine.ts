@@ -54,11 +54,14 @@ function shellFix(cfg: SeoConfig, raw: PageAudit, rendered: PageAudit, renderedH
   const town = cfg.towns?.[0];
   const trade = cfg.trade ? cfg.trade[0].toUpperCase() + cfg.trade.slice(1) : "";
   const factTitle = [trade && town ? `${trade} in ${town}` : trade || "", f.businessName ?? cfg.domain].filter(Boolean).join(" | ");
-  const title = !isPlaceholderTitle(rendered.title) ? rendered.title : factTitle;
-  const firstPara = renderedHtml.replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/gi, " ").match(/<p[^>]*>([^<]{60,400})<\/p>/i)?.[1]?.replace(/\s+/g, " ").trim();
-  const description = rendered.description || (firstPara ? (firstPara.length > 155 ? `${firstPara.slice(0, 152).replace(/\s+\S*$/, "")}...` : firstPara) : "");
+  // Title: the page's own if it has a real one; else service and town from the plan; else its main heading.
+  const h1 = rendered.h1[0];
+  const title = !isPlaceholderTitle(rendered.title) ? rendered.title : trade && town ? factTitle : h1 ? `${h1} | ${f.businessName ?? cfg.domain}` : factTitle;
   const copy = staticCopy(renderedHtml);
   if (!copy) return base;
+  // Description: the page's own, else its first full sentence of body text (not a link, not a lead-in ending in a colon).
+  const para = [...copy.matchAll(/<p>([^<]{70,})<\/p>/g)].map((m) => m[1].replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").trim()).find((t) => !/[:,]$/.test(t));
+  const description = rendered.description || (para ? (para.length > 155 ? `${para.slice(0, 152).replace(/\s+\S*$/, "")}...` : para) : "");
   const fields = [{ name: "title", label: "Title", before: raw.title, after: title.slice(0, 70) }, ...(description ? [{ name: "description", label: "Description", before: raw.description, after: description }] : [])].filter((x) => x.after && x.after !== x.before);
   return {
     ...base,
