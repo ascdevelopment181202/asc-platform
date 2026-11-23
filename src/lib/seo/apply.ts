@@ -10,7 +10,7 @@ import { createPost, deletePost, getLocation, patchLocation, v4Path, withUtm, ty
 import { getAction, getSettings, globalPaused, logChange, pagesThisWeek, updateAction } from "./store";
 import { visualCheck } from "./visual";
 import { pingIndexNow } from "./bing";
-import { intoBody, intoHead, isHeadOnly, setDescription, setTitle } from "./html-edit";
+import { intoBody, intoHead, isHeadOnly, setDescription, setTitle, isClaudeBundle, syncBundleHead } from "./html-edit";
 import { sendClientReport } from "./mail";
 
 const DAY = 86_400_000;
@@ -195,6 +195,8 @@ export async function planRepoEdits(a: SeoAction, cfg: SeoConfig): Promise<{ edi
     const loc = `https://${cfg.domain}${d.page}`;
     if (sm && !sm.includes(loc)) await put(`${root}sitemap.xml`, sm.replace(/<\/urlset>/i, `  <url><loc>${loc}</loc></url>\n</urlset>`));
   }
+  // A Claude Design bundle swaps in its own template once scripts run, so mirror the title and description into it.
+  for (const e of edits.values()) if (/(^|\/)index\.html$/.test(e.path) && e.after && isClaudeBundle(e.after)) e.after = syncBundleHead(e.after);
   return { edits: [...edits.values()], base };
 }
 

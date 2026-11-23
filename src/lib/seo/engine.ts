@@ -8,6 +8,8 @@ import { approveAction, canAuto, preparePr, progressPr } from "./apply";
 import { bingStats } from "./bing";
 import { citationFinding, citationRows, findLinks } from "./citations";
 import { crawlSite, get, healthCheck, pageSpeed } from "./crawl";
+import { NEEDS_DESIGN, viaClaudeDesign } from "./claude-design";
+import { isClaudeBundle } from "./html-edit";
 import { detectSearch, pathOf } from "./detect";
 import { draftFor, templateReply } from "./drafts";
 import { searchKeywords } from "./gbp";
@@ -137,7 +139,19 @@ export async function runClient(clientId: string, mode: Mode = "daily", deadline
   // What has worked for this trade ranks a little higher; what hasn't, a little lower.
   const boost: Record<string, number> = {};
   for (const [kind, r] of Object.entries(await trackRecord(cfg.trade).catch(() => ({})))) if (r.total >= 3) boost[kind] = r.worked / r.total >= 0.6 ? 1.2 : r.worked / r.total <= 0.25 ? 0.8 : 1;
+  // Use the address the site actually lives at (www or not), so sitemaps, schema and links never point at a redirect.
+  // And note whether it's a Claude Design export, whose page structure can only be changed in Claude Design.
+  let bundled = false;
+  if (cfg.domain) {
+    const home = await get(`https://${cfg.domain}`).catch(() => null);
+    if (home?.status && home.url) {
+      const host = new URL(home.url).hostname;
+      if (host.replace(/^www\./, "") === cfg.domain.replace(/^www\./, "")) cfg.domain = host;
+      bundled = isClaudeBundle(home.text);
+    }
+  }
   const raise = async (findings: Finding[], group: string[]) => {
+    if (bundled) findings = findings.map((f) => (NEEDS_DESIGN.includes(f.kind) ? viaClaudeDesign(cfg, f) : f));
     const r = await upsertFindings(clientId, findings, cfg, group, boost);
     if (r.added) log.push(`+${r.added} items`);
   };

@@ -241,3 +241,33 @@ test("a repo that only holds a zip, or nothing, is flagged before any fix is wri
   assert.equal(siteFilesProblem(f("package.json", "src/app/page.tsx")), null);
   assert.equal(siteFilesProblem(f("public/index.html")), null);
 });
+
+// ---------- Claude Design bundles ----------
+import { isClaudeBundle, setTitle as setT, syncBundleHead } from "./html-edit";
+
+test("a title set on a Claude Design bundle is copied into its template, so it survives once the page loads", () => {
+  const tpl = JSON.stringify('<!DOCTYPE html>\n<html><head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width, initial-scale=1">\n<script src="x"></script>\n</head><body></body></html>').replace(/<\//g, "<\\u002F");
+  const page = `<html><head><title>Bundled Page</title></head><body><script type="__bundler/template">\n${tpl}\n  </script></body></html>`;
+  assert.ok(isClaudeBundle(page));
+  const out = syncBundleHead(setT(page, `Driveways & Patios | "P.I.C"`).replace("</head>", '<meta name="description" content="Sheffield&#39;s oldest &amp; best"></head>'));
+  const inner = JSON.parse(out.match(/__bundler\/template">\n([\s\S]*?)\n  <\/script>/)![1]) as string;
+  assert.match(inner, /<title>Driveways & Patios \| "P.I.C"<\/title>/);
+  assert.match(inner, /<meta name="description" content="Sheffield&#39;s oldest & best">/);
+  // Running it again replaces rather than duplicates.
+  const twice = syncBundleHead(out);
+  assert.equal((twice.match(/u002Ftitle>/g) ?? []).length, 1);
+  assert.equal(syncBundleHead("<html><head><title>x</title></head></html>"), "<html><head><title>x</title></head></html>");
+});
+
+// ---------- Claude Design sites ----------
+import { NEEDS_DESIGN, viaClaudeDesign } from "./claude-design";
+
+test("on a Claude Design site, a new page becomes a Claude Design task, never an AI write", () => {
+  const f = { kind: "new_page", type: "Content" as const, dedupe: "new_page:x", summary: "Create a Patios in Sheffield page: there isn't one.", detail: { evidence: { why: "No page for it." }, gain: {}, chain: [], confidence: "Medium" as const, effort: "1 click" as const, risk: "Low" as const, undoable: true }, draft: { target: "site" as const, needsAi: true } };
+  const out = viaClaudeDesign({ githubRepo: "acme/site" }, f);
+  assert.equal(out.draft?.target, "manual");
+  assert.equal(out.draft?.needsAi, undefined);
+  assert.match(out.draft!.steps![1].copy!, /new page to this site for Patios in Sheffield/);
+  assert.equal(out.draft!.steps![2].url, "https://github.com/acme/site/upload/main");
+  assert.ok(NEEDS_DESIGN.includes("answer_block") && !NEEDS_DESIGN.includes("title_rewrite"));
+});

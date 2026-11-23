@@ -46,3 +46,45 @@ export function setDescription(html: string, description: string): string {
 
 /** True when a block is only structured data, which belongs in the head. */
 export const isHeadOnly = (block: string) => /^\s*(<script[^>]*application\/ld\+json[\s\S]*?<\/script>\s*)+$/i.test(block);
+
+// ---------- Claude Design bundles ----------
+// A Claude Design export is one index.html whose real page is a JSON string inside <script type="__bundler/template">.
+// Once scripts run, that template replaces the document, so a title or description set only in the outer head is lost.
+
+const BUNDLE_OPEN = /<script\b[^>]*type\s*=\s*["']__bundler\/template["'][^>]*>/i;
+export const isClaudeBundle = (html: string) => BUNDLE_OPEN.test(html);
+
+/** Text as it must appear inside the template's JSON string. */
+const inJson = (s: string) => JSON.stringify(s).slice(1, -1).replace(/<\//g, "<\\u002F");
+const unHtml = (s: string) => s.replace(/&quot;/g, '"').replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
+
+/** Copies the outer title and description into the bundle's template, so they survive once the page loads. */
+export function syncBundleHead(html: string): string {
+  const open = html.match(BUNDLE_OPEN);
+  if (!open || open.index === undefined) return html;
+  const start = open.index + open[0].length;
+  const end = html.indexOf("</script>", start);
+  if (end < 0) return html;
+  const outer = html.slice(0, open.index);
+  const title = outer.match(/<title\b[^>]*>([\s\S]*?)<\/title\s*>/i)?.[1]?.trim();
+  const desc = outer.match(/<meta\b[^>]*name\s*=\s*["']description["'][^>]*content\s*=\s*"([^"]*)"/i)?.[1];
+  let tpl = html.slice(start, end);
+  const anchor = tpl.search(/initial-scale=1\\">/) >= 0 ? tpl.indexOf('initial-scale=1\\">') + 'initial-scale=1\\">'.length : tpl.indexOf("<head>") >= 0 ? tpl.indexOf("<head>") + 6 : -1;
+  if (title && !/^bundled page$/i.test(title)) {
+    const tag = `<title>${inJson(unHtml(title))}<\\u002Ftitle>`;
+    const cur = tpl.match(/<title>[\s\S]*?<\\u002Ftitle>/);
+    if (cur) tpl = tpl.replace(cur[0], () => tag);
+    else if (anchor >= 0) tpl = `${tpl.slice(0, anchor)}\\n${tag}${tpl.slice(anchor)}`;
+  }
+  if (desc) {
+    const tag = `<meta name=\\"description\\" content=\\"${inJson(unHtml(desc)).replace(/\\"/g, "&quot;")}\\">`;
+    const cur = tpl.match(/<meta name=\\"description\\" content=\\"[^>]*?\\">/);
+    if (cur) tpl = tpl.replace(cur[0], () => tag);
+    else {
+      const t = tpl.match(/<\\u002Ftitle>/);
+      const at = t && t.index !== undefined ? t.index + t[0].length : anchor;
+      if (at >= 0) tpl = `${tpl.slice(0, at)}\\n${tag}${tpl.slice(at)}`;
+    }
+  }
+  return html.slice(0, start) + tpl + html.slice(end);
+}
