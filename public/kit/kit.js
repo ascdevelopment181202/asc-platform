@@ -9,7 +9,7 @@ var phoneSvg='<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke
 var W=S.work||{}, hasPairs=W.pairs&&W.pairs.length;
 var h='';
 if(S.concept)h+='<div class="concept">Preview of the new website for <strong>'+e(S.concept)+'</strong> by ASC Development. <span class="long">It\'s not live or on Google yet.</span></div>';
-h+='<header class="nav"><div class="wrap"><a class="brand" href="'+(S.home||'#top')+'"><b>'+e(S.brand)+'</b><span>'+e(S.tagline)+'</span></a><ul><li><a href="#services">Services</a></li>'+((W.gallery&&W.gallery.length)||hasPairs?'<li><a href="#work">Our work</a></li>':'')+'<li><a href="#how">How it works</a></li>'+(S.reviews?'<li><a href="#reviews">Reviews</a></li>':'')+'<li><a href="#areas">Areas</a></li></ul><a class="phone" href="tel:'+tel+'">'+phoneSvg+e(S.phone)+'</a></div></header>';
+h+='<header class="nav"><div class="wrap"><a class="brand" href="'+(S.home||'#top')+'"><b>'+e(S.brand)+'</b><span>'+e(S.tagline)+'</span></a><ul><li><a href="#services">Services</a></li>'+((W.gallery&&W.gallery.length)||hasPairs?'<li><a href="#work">Our work</a></li>':'')+'<li><a href="#how">How it works</a></li>'+(S.reviews?'<li><a href="#reviews">Reviews</a></li>':'')+'<li><a href="#areas">'+e(S.areasNav||'Areas')+'</a></li></ul><a class="phone" href="tel:'+tel+'">'+phoneSvg+e(S.phone)+'</a></div></header>';
 h+='<main id="top"><section class="hero" aria-label="Introduction"><div class="mosaic" aria-hidden="true">';
 var M=S.mosaic||[],n=M.length,cols=n?[[],[],[]]:[];
 if(n)for(var i=0;i<12;i++){cols[i%3].push(i)}
@@ -38,7 +38,7 @@ W.gallery.forEach(function(g,i){h+='<button type="button" style="--i:'+(i%9)+'" 
 h+='</div></div>';
 }
 h+='</section>';}
-h+='<section class="sec process" id="how"><div class="wrap"><h2 class="title split" data-rv-split>How a job works</h2><div class="steps" data-rv-plain>';
+h+='<section class="sec process" id="how"><div class="wrap"><h2 class="title split" data-rv-split>'+e(S.howTitle||'How a job works')+'</h2><div class="steps" data-rv-plain>';
 S.steps.forEach(function(s,i){h+='<div class="step" data-rv style="--dl:'+(i*.15)+'s"><h3>'+e(s[0])+'</h3><p>'+e(s[1])+'</p></div>'});
 h+='</div></div></section>';
 var ST=S.story;
