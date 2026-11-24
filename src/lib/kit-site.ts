@@ -10,7 +10,7 @@ function rgbToHex(rgb: number[]) {
   return `#${rgb.map((v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, "0")).join("")}`;
 }
 /** Mixes a colour towards black (amount < 0) or white (amount > 0). */
-function shade(hex: string, amount: number) {
+export function shade(hex: string, amount: number) {
   const rgb = hexToRgb(hex);
   const target = amount < 0 ? 0 : 255;
   const a = Math.abs(amount);
